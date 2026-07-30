@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <title>Roterande Diagramvisning</title>
+    <style>
+        /* ... (CSS från förra steget) ... */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0; 
+        }
+
+        .chart-rotator {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 1s ease-in-out; 
+            background-color: white; 
+        }
+        
+        .chart-slide.active {
+            opacity: 1;
+        }
+
+        .chart-slide iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            padding: 15px; 
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="chart-rotator">
+
+        <div class="chart-slide active" id="chart-1">
+            <iframe 
+                src="https://docs.google.com/spreadsheets/d/e/2PACX-1vS6IMv3bGw9e7xm_L5TTs9ipMnICRvZueuyv9QN_tOcw_RJO9xA-CKnTq6yBjwxBmgHEZ1UqbpPhsBa/pubchart?oid=1248229822&format=interactive"
+                title="Antal sändningar per dag"
+                loading="lazy"
+            ></iframe>
+        </div>
+
+        <div class="chart-slide" id="chart-2">
+            <iframe 
+                src="https://docs.google.com/spreadsheets/d/e/2PACX-1vS6IMv3bGw9e7xm_L5TTs9ipMnICRvZueuyv9QN_tOcw_RJO9xA-CKnTq6yBjwxBmgHEZ1UqbpPhsBa/pubchart?oid=389844657&format=interactive"
+                title="Fördelning av sändningar per svårighetsgrad"
+                loading="lazy"
+            ></iframe>
+        </div>
+
+    </div>
+
+    <script>
+        const slides = document.querySelectorAll('.chart-slide');
+        const intervalTime = 10000; // 10 sekunder per diagram
+        let currentIndex = 0;
+
+        function showNextSlide() {
+            slides[currentIndex].classList.remove('active');
+            currentIndex = (currentIndex + 1) % slides.length;
+            slides[currentIndex].classList.add('active');
+        }
+
+        // Starta växlingen efter den första sliden visats
+        if (slides.length > 1) {
+            setInterval(showNextSlide, intervalTime);
+        }
+    </script>
+</body>
+</html>

@@ -1,1 +1,262 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Incheckning</title>
 
+<style>
+/* ------------------------------------------------------------------ */
+/* BODY & FÄRGKLASSER */
+/* ------------------------------------------------------------------ */
+html, body {
+ font-family: 'Roboto', Arial, sans-serif;
+ transition: background-color 0.8s ease-in-out;
+ text-align: center;
+ margin: 0;
+ padding: 0;
+ height: 100%;
+ width: 100%;
+ background-color: white;
+ display: flex;
+ justify-content: center;
+ align-items: center;
+}
+
+/* Bakgrundsfärgen styrs av den klass som Jinja/JS applicerar */
+body.status-green { background-color: #4CAF50 !important; }
+body.status-yellow { background-color: #FFC107 !important; }
+body.status-red { background-color: #F44336 !important; }
+body.status-gray { background-color: #E0E0E0 !important; }
+/* NYA KLASSER FÖR 10-KORT */
+body.status-purple { background-color: #9C27B0 !important; } /* TENCARD_READY */
+body.status-blue { background-color: #2196F3 !important; }  /* TENCARD_PROCESSING/CLIP */
+
+/* ------------------------------------------------------------------ */
+/* INNEHÅLL OCH STATUSBOX DESIGN */
+/* ------------------------------------------------------------------ */
+#status-box-wrapper {
+ max-width: 800px;
+ width: 90%;
+ background-color: white;
+ padding: 17px;
+ border-radius: 17px;
+ box-shadow: 0 8.5px 17px rgba(0,0,0,0.1);
+ z-index: 10;
+ position: relative;
+ margin: 0;
+}
+
+h1 {
+ font-size: 1.38em;
+ color: #444;
+ margin-bottom: 8.5px;
+ margin-top: 8.5px;
+}
+
+/* -------------------- Huvudmeddelande (Namn/Välkommen) -------------------- */
+.status-message {
+ font-size: 2.07em;
+ padding: 8.5px 17px;
+ border-radius: 8.5px;
+ margin: 8.5px 0;
+ font-weight: 400;
+ color: #000;
+ text-shadow: none;
+ background-color: transparent;
+ box-shadow: none;
+ border: none;
+}
+
+/* -------------------- Övriga Detaljer -------------------- */
+
+.name { display: none; }
+
+.secondary-status {
+ font-size: 1.38em;
+ font-weight: 700;
+ color: #444;
+ margin-top: 3.5px;
+ margin-bottom: 3.5px;
+}
+
+.card-number {
+ font-size: 1.21em;
+ color: #666;
+ margin-bottom: 3.5px;
+}
+.date {
+ font-style: italic;
+ font-size: 1.21em;
+ color: #777;
+ margin-top: 3.5px;
+}
+
+/* **KORRIGERAD STIL**: Viloläge (Resting) styrs av CSS på status-box-wrapper */
+ /* Dölj detaljer i viloläget */
+#status-box-wrapper.resting .name,
+ #status-box-wrapper.resting .card-number,
+ #status-box-wrapper.resting .date,
+ #status-box-wrapper.resting .expiry-label,
+ #status-box-wrapper.resting .secondary-status {
+ display: none;
+}
+ /* Stylar statusmeddelandet i viloläget ("Blippa kort") */
+#status-box-wrapper.resting .status-message {
+ font-size: 3.1em;
+ background-color: #f0f0f0 !important;
+ color: #555;
+ padding: 26px 34.5px;
+ border-radius: 17px;
+ margin: 0 !important;
+ border: none;
+}
+</style>
+</head>
+
+<body {% if status_data %} class="status-{{ status_data.status_color }}" {% endif %}>
+
+ <div id="status-box-wrapper" {% if not status_data %} class="resting" {% endif %}>
+ <h1>Incheckning</h1>
+
+ <div id="status-container">
+
+    {% if status_data %}
+      <div id="status-data-js" data-status="{{ status_data.status }}" style="display: none;"></div>
+    {% else %}
+      <div id="status-data-js" data-status="RESTING" style="display: none;"></div>
+    {% endif %}
+      <p class="status-message">
+   {% if status_data %}
+    {{ status_data.message }}
+   {% else %}
+    Blippa ditt kort
+   {% endif %}
+  </p>
+ 
+  {% if status_data %}
+   <p class="secondary-status">
+    {{ status_data.secondary_message }}
+   </p>
+
+   <p class="card-number">Kortnr: {{ status_data.card_number_dec }}</p>
+   
+      {% if status_data.type == "MEMBER" %}
+    <p class="date expiry-label">Giltig till: {{ status_data.expiry_date.split('T')[0] }}</p>
+   {% endif %}
+   
+  {% endif %}
+ </div>
+</div>
+<script>
+ const statusBoxWrapper = document.getElementById('status-box-wrapper');
+ const apiRoute = '/';
+
+ // --- LJUDKONFIGURATION ---
+ // Se till att filerna success.mp3, failure.mp3 och warning.mp3 ligger i mappen static/
+ const audioSuccess = new Audio('static/success.mp3'); // Godkänd (ACTIVE, TENCARD_CLIPPED_OK, TENCARD_READY)
+ const audioFailure = new Audio('static/failure.mp3'); // Misslyckad (EXPIRED, NOT_FOUND, TENCARD_EXHAUSTED etc.)
+ const audioWarning = new Audio('static/warning.mp3'); // Varning (EXPIRING_SOON)
+
+ let lastPlayedStatus = null;
+
+ function playSound(status) {
+  // Kontrollera den inlästa statusen och spela upp rätt ljud
+  if (
+   status === 'ACTIVE' || 
+   status === 'TENCARD_CLIPPED_OK' || 
+   status === 'TENCARD_READY' 
+  ) {
+   // Godkända statusar
+   audioSuccess.play().catch(e => console.error("Kunde inte spela upp godkänd-ljud:", e));
+  } else if (status === 'EXPIRING_SOON') {
+   // Varning
+   audioWarning.play().catch(e => console.error("Kunde inte spela upp varning-ljud:", e));
+  } else if (
+    status === 'EXPIRED' || 
+    status === 'NOT_FOUND' || 
+    status === 'INVALID_FORMAT' ||
+    status === 'TENCARD_EXHAUSTED' || 
+    status === 'TENCARD_CLIP_FAIL_EXHAUSTED' || 
+    status === 'TENCARD_CLIP_FAIL_UNKNOWN' || 
+    status === 'TENCARD_CLIP_ERROR' 
+  ) {
+   // Misslyckade statusar
+   audioFailure.play().catch(e => console.error("Kunde inte spela upp misslyckad-ljud:", e));
+  }
+ 
+  // Spela inte ljud för den tillfälliga statusen "TENCARD_PROCESSING"
+  lastPlayedStatus = status; // Uppdatera senast spelade status
+ }
+ // -------------------------
+
+
+ // Funktion som hämtar den senaste renderade HTML:en
+ function updateData() {
+  fetch(apiRoute)
+   .then(response => response.text())
+   .then(html => {
+    // Skapa temporärt DOM
+    const tempDoc = new DOMParser().parseFromString(html, 'text/html');
+   
+    // 1. Upptäck statuskod och viloläge från den inkommande HTML:en
+    const tempWrapper = tempDoc.getElementById('status-box-wrapper');
+   
+    const newStatusDataElement = tempWrapper.querySelector('#status-data-js');
+    const newStatusCode = newStatusDataElement ? newStatusDataElement.dataset.status : null;
+   
+    const isResting = newStatusCode === 'RESTING'; 
+
+
+    // 2. Uppdatera body class för att ändra bakgrundsfärgen
+    const newBodyClass = tempDoc.body.className;
+    document.body.className = newBodyClass;
+   
+    // 3. Uppdatera statusboxens hela innehåll
+    statusBoxWrapper.innerHTML = tempWrapper.innerHTML;
+   
+    // 4. Uppdatera 'resting' klassen
+    if (isResting) {
+     statusBoxWrapper.classList.add('resting');
+     // Återställ lastPlayedStatus när vi återgår till viloläge
+     if (lastPlayedStatus !== null) lastPlayedStatus = null;
+    } else {
+     statusBoxWrapper.classList.remove('resting');
+    
+     // 5. SPELA LJUD! (Endast om statusen har ändrats och det inte är viloläge)
+     if (newStatusCode && newStatusCode !== 'RESTING' && newStatusCode !== lastPlayedStatus) {
+      playSound(newStatusCode);
+     }
+    }
+
+   })
+   .catch(error => console.error('Fel vid hämtning av data:', error));
+ }
+
+ // Server-Sent Events (SSE) Lyssnare: Triggad av kortläsaren
+ if (!!window.EventSource) {
+  var source = new EventSource('/stream');
+
+  source.onmessage = function(e) {
+   if (e.data === 'complete') {
+    console.log("SSE: Läsning komplett, hämtar slutstatus.");
+    updateData(); // Hämta och visa den slutgiltiga statusen omedelbart
+   }
+  };
+
+  source.onerror = function(e) {
+   console.error("SSE Anslutningsfel. Försöker återansluta...", e);
+  };
+
+ }
+
+ // Initial uppdatering vid sidladdning
+ updateData();
+
+ // Timer för att hantera timeout och återgå till viloläge efter REST_TIMEOUT_SECONDS
+ // Obs: REST_TIMEOUT_SECONDS måste vara definierad i Flask och skickas till Jinja
+setInterval(updateData, {{ REST_TIMEOUT_SECONDS * 1000 }});
+
+</script>
+</body>
+</html>

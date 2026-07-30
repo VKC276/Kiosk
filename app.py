@@ -794,17 +794,6 @@ def checkin():
     )
 
 
-@app.route('/diagrams')
-def diagrams():
-    """Roterande Google Charts — styrs via DIAGRAM_ROTATOR i config.json."""
-    diagram_cfg = config.get("DIAGRAM_ROTATOR") or {}
-    return render_template(
-        'diagram_rotator.html',
-        charts=diagram_cfg.get("charts") or [],
-        interval_ms=int(diagram_cfg.get("intervalMs", 10000)),
-    )
-
-
 # --- START ---
 
 if __name__ == '__main__':

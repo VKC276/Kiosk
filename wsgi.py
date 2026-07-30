@@ -1,25 +1,15 @@
-import threading
-from app import app, cache_updater_thread, card_reader_thread, SHOULD_RUN
-import sys
+"""WSGI-entry för Gunicorn.
 
-# --- STARTA BAKGRUNDSTRÅDARNA DIREKT VID IMPORT ---
+Bakgrundstrådar startas en gång via start_background_threads().
+"""
 
-print("GUNICORN START: Initierar bakgrundstrådar...")
-sys.stdout.flush()
+from app import SERVER_HOST, SERVER_PORT, SHOULD_RUN, app, start_background_threads
 
-# Starta Cache Updater
-updater_thread = threading.Thread(target=cache_updater_thread, daemon=True)
-updater_thread.start()
+start_background_threads()
 
-# Starta Kortläsare
-reader_thread = threading.Thread(target=card_reader_thread, daemon=True)
-reader_thread.start()
-
-# --- DENNA DEL IGNORERAS AV GUNICORN MEN KÖR NÄR DU KÖR python wsgi.py ---
+# Kör lokalt: python wsgi.py
 if __name__ == '__main__':
-    print("DEBUG: Kör som huvudskript (ej Gunicorn). Flask startar...")
     try:
-        app.run(host='0.0.0.0', port=8081, debug=False)
+        app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False)
     finally:
         SHOULD_RUN = False
-

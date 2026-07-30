@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Västerviks klättercenter Kiosk</title>
+  <style>
+    :root {
+      --checkin-height: {{ checkin_height }}%;
+      --content-height: {{ content_height }}%;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+      box-sizing: border-box;
+    }
+
+    .main-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+    }
+
+    .rotator-section {
+      height: var(--content-height);
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .rotator-section.full {
+      height: 100%;
+    }
+
+    .rotator-slide {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.8s ease-in-out;
+      /* Innehåll är display-only — ingen Space/tangentfokus stjäl från incheckning */
+      pointer-events: none;
+    }
+
+    .rotator-slide.active {
+      opacity: 1;
+    }
+
+    .rotator-slide iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background-color: #f0f0f0;
+    }
+
+    .slide-timer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 3px;
+      z-index: 5;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .slide-timer__bar {
+      height: 100%;
+      width: 100%;
+      transform-origin: left center;
+      transform: scaleX(1);
+      background: rgba(255, 255, 255, 0.55);
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
+      will-change: transform;
+    }
+
+    .card-reader-section {
+      height: var(--checkin-height);
+      width: 100%;
+      box-sizing: border-box;
+      background-color: #ffffff;
+      border-top: 5px solid #ccc;
+      padding: 0;
+    }
+
+    .card-reader-section iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="main-container">
+    <div class="rotator-section{% if not checkin_enabled %} full{% endif %}" id="rotator">
+      {% for slide in slides %}
+      <div
+        class="rotator-slide{% if loop.first %} active{% endif %}"
+        data-duration-ms="{{ slide.durationMs }}"
+        data-url="{{ slide.url }}"
+        id="slide-{{ slide.id }}"
+      >
+        <iframe
+          id="iframe-{{ slide.id }}"
+          title="{{ slide.title }}"
+          tabindex="-1"
+          loading="lazy"
+          data-base="{{ slide.url }}"
+          {% if loop.first %}src="{{ slide.url }}"{% endif %}
+        ></iframe>
+      </div>
+      {% endfor %}
+      <div class="slide-timer" aria-hidden="true">
+        <div class="slide-timer__bar" id="slide-timer-bar"></div>
+      </div>
+    </div>
+
+    {% if checkin_enabled %}
+    <div class="card-reader-section">
+      <iframe
+        id="checkin-frame"
+        src="{{ checkin_path }}"
+        title="MIFARE Kortläsarstatus"
+        loading="eager"
+      ></iframe>
+    </div>
+    {% endif %}
+  </div>
+
+  <script>
+    const RELOAD_ON_SHOW = {{ 'true' if reload_on_show else 'false' }};
+    const slides = Array.from(document.querySelectorAll('.rotator-slide'));
+    const timerBar = document.getElementById('slide-timer-bar');
+    let currentSlideIndex = 0;
+    let slideTimer = null;
+    let progressRaf = null;
+    let slideStartedAt = 0;
+    let slideDurationMs = 0;
+
+    function keepCheckinFocus() {
+      const checkin = document.getElementById('checkin-frame');
+      if (checkin) {
+        try { checkin.focus({ preventScroll: true }); } catch (_) {}
+      } else {
+        window.focus();
+      }
+    }
+
+    function ensureSrc(slide) {
+      const iframe = slide.querySelector('iframe');
+      if (!iframe) return null;
+      const base = iframe.getAttribute('data-base') || slide.dataset.url;
+      if (!iframe.getAttribute('src')) {
+        iframe.src = base;
+      }
+      return iframe;
+    }
+
+    function refreshIframe(iframe) {
+      if (!iframe || !RELOAD_ON_SHOW) return;
+      const base = iframe.getAttribute('data-base') || iframe.src.split('?')[0].split('&')[0];
+      const clean = base.replace(/([?&])refresh=\d+/g, '').replace(/[?&]$/, '');
+      const joiner = clean.includes('?') ? '&' : '?';
+      iframe.src = `${clean}${joiner}refresh=${Date.now()}`;
+    }
+
+    function getDurationMs(index) {
+      const raw = parseInt(slides[index].dataset.durationMs, 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : 30000;
+    }
+
+    function stopProgress() {
+      if (progressRaf) cancelAnimationFrame(progressRaf);
+      progressRaf = null;
+    }
+
+    function tickProgress() {
+      if (!timerBar || slideDurationMs <= 0) return;
+      const elapsed = Date.now() - slideStartedAt;
+      const remaining = Math.max(0, 1 - elapsed / slideDurationMs);
+      timerBar.style.transform = `scaleX(${remaining})`;
+      if (remaining > 0) {
+        progressRaf = requestAnimationFrame(tickProgress);
+      }
+    }
+
+    function startProgress(durationMs) {
+      stopProgress();
+      slideStartedAt = Date.now();
+      slideDurationMs = durationMs;
+      if (!timerBar) return;
+      timerBar.style.transform = 'scaleX(1)';
+      progressRaf = requestAnimationFrame(tickProgress);
+    }
+
+    function setSlide(index) {
+      if (!slides.length) return;
+      slides[currentSlideIndex]?.classList.remove('active');
+      currentSlideIndex = ((index % slides.length) + slides.length) % slides.length;
+      const slide = slides[currentSlideIndex];
+      slide.classList.add('active');
+
+      const iframe = ensureSrc(slide);
+      if (iframe && iframe.getAttribute('src')) {
+        refreshIframe(iframe);
+      }
+
+      const durationMs = getDurationMs(currentSlideIndex);
+      startProgress(durationMs);
+
+      keepCheckinFocus();
+      clearTimeout(slideTimer);
+      if (slides.length > 1) {
+        slideTimer = setTimeout(() => setSlide(currentSlideIndex + 1), durationMs);
+      }
+    }
+
+    // Blockera Space/piltangenter från att "läcka" till innehåll — byten styrs bara av timer.
+    window.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.code === 'Space' || e.key.startsWith('Arrow')) {
+        e.preventDefault();
+        keepCheckinFocus();
+      }
+    }, true);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      keepCheckinFocus();
+      if (slides.length > 0) setSlide(0);
+      setInterval(keepCheckinFocus, 5000);
+    });
+  </script>
+</body>
+</html>

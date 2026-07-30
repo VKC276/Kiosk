@@ -1,0 +1,2 @@
+# Ge medlemmar i gruppen `input` läsrätt till event-enheter.
+KERNEL=="event*", SUBSYSTEM=="input", MODE="0660", GROUP="input"

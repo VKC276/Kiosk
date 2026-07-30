@@ -14,7 +14,7 @@ Tills branchen är mergad till `main` kan du peka på feature-branchen:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/VKC276/Kiosk/cursor/kiosk-forbattringar-a840/install.sh \
-  | sudo KIOSK_BRANCH=cursor/kiosk-forbattringar-a840 bash
+  | sudo env KIOSK_BRANCH=cursor/kiosk-forbattringar-a840 bash
 ```
 
 Eller från en redan klonad katalog:

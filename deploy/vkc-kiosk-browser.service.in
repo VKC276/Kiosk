@@ -1,5 +1,5 @@
 [Unit]
-Description=VKC Kiosk Chromium (helskärm)
+Description=VKC Kiosk Chromium (fullskärm, ej hårdlåst)
 Documentation=https://github.com/VKC276/Kiosk
 After=graphical.target vkc-kiosk.service
 Wants=vkc-kiosk.service

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Startar Chromium i kiosk-läge mot den lokala servern.
+# Startar Chromium i fullskärm (inte hårdlåst kiosk) så Pi Connect m.m. fungerar.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +15,6 @@ URL="http://127.0.0.1:${PORT}/"
 PROFILE_DIR="${HOME}/.config/vkc-kiosk-chromium"
 mkdir -p "${PROFILE_DIR}"
 
-# Hitta Chromium/Chrome
 BROWSER=""
 for candidate in chromium-browser chromium google-chrome google-chrome-stable; do
   if command -v "${candidate}" >/dev/null 2>&1; then
@@ -29,21 +28,21 @@ if [[ -z "${BROWSER}" ]]; then
   exit 1
 fi
 
-# Stäng av skärmsläckare/blankning om xset finns (X11)
+# Minska skärmsläckare/blankning, men lås inte skrivbordet
 if command -v xset >/dev/null 2>&1; then
   xset s off >/dev/null 2>&1 || true
   xset -dpms >/dev/null 2>&1 || true
   xset s noblank >/dev/null 2>&1 || true
 fi
 
+# Vanlig fullskärm — går att lämna med F11 / Alt+Tab (viktigt för Pi Connect).
+# Ingen --kiosk (hårdlåser UI) och ingen --app (döljer fönsterkontroller).
 exec "${BROWSER}" \
-  --kiosk \
-  --app="${URL}" \
+  --start-fullscreen \
   --user-data-dir="${PROFILE_DIR}" \
   --noerrdialogs \
-  --disable-infobars \
   --disable-session-crashed-bubble \
   --disable-restore-session-state \
   --check-for-update-interval=31536000 \
   --autoplay-policy=no-user-gesture-required \
-  --start-fullscreen
+  "${URL}"

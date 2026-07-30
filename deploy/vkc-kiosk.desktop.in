@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=VKC Kiosk
-Comment=Startar Chromium i kiosk-läge
+Comment=Startar Chromium i fullskärm (ej hårdlåst)
 Exec=__KIOSK_DIR__/deploy/start-browser.sh
 X-GNOME-Autostart-enabled=true
 StartupNotify=false

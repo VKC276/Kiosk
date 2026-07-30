@@ -37,9 +37,11 @@ Installern gör automatiskt:
 - git-klon / uppdatering
 - Python-venv + `requirements.txt`
 - lägger användaren i gruppen `input` (kortläsare)
-- systemd-tjänster: `vkc-kiosk` (API) + `vkc-kiosk-browser` (Chromium)
+- systemd-tjänster: `vkc-kiosk` (API) + `vkc-kiosk-browser` (Chromium i **fullskärm**, inte hårdlåst kiosk)
 - CLI-kommandot `vkc-kiosk`
 - autostart-fallback för skrivbordet
+
+Chromium startas med `--start-fullscreen` (inte `--kiosk`), så du kan fortfarande använda **Pi Connect**, Alt+Tab och F11.
 
 ## Efter installation
 

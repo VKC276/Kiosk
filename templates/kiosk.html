@@ -59,6 +59,27 @@
       background-color: #f0f0f0;
     }
 
+    .slide-timer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 3px;
+      z-index: 5;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .slide-timer__bar {
+      height: 100%;
+      width: 100%;
+      transform-origin: left center;
+      transform: scaleX(1);
+      background: rgba(255, 255, 255, 0.55);
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
+      will-change: transform;
+    }
+
     .card-reader-section {
       height: var(--checkin-height);
       width: 100%;
@@ -96,6 +117,9 @@
         ></iframe>
       </div>
       {% endfor %}
+      <div class="slide-timer" aria-hidden="true">
+        <div class="slide-timer__bar" id="slide-timer-bar"></div>
+      </div>
     </div>
 
     {% if checkin_enabled %}
@@ -113,8 +137,12 @@
   <script>
     const RELOAD_ON_SHOW = {{ 'true' if reload_on_show else 'false' }};
     const slides = Array.from(document.querySelectorAll('.rotator-slide'));
+    const timerBar = document.getElementById('slide-timer-bar');
     let currentSlideIndex = 0;
     let slideTimer = null;
+    let progressRaf = null;
+    let slideStartedAt = 0;
+    let slideDurationMs = 0;
 
     function keepCheckinFocus() {
       const checkin = document.getElementById('checkin-frame');
@@ -148,6 +176,30 @@
       return Number.isFinite(raw) && raw > 0 ? raw : 30000;
     }
 
+    function stopProgress() {
+      if (progressRaf) cancelAnimationFrame(progressRaf);
+      progressRaf = null;
+    }
+
+    function tickProgress() {
+      if (!timerBar || slideDurationMs <= 0) return;
+      const elapsed = Date.now() - slideStartedAt;
+      const remaining = Math.max(0, 1 - elapsed / slideDurationMs);
+      timerBar.style.transform = `scaleX(${remaining})`;
+      if (remaining > 0) {
+        progressRaf = requestAnimationFrame(tickProgress);
+      }
+    }
+
+    function startProgress(durationMs) {
+      stopProgress();
+      slideStartedAt = Date.now();
+      slideDurationMs = durationMs;
+      if (!timerBar) return;
+      timerBar.style.transform = 'scaleX(1)';
+      progressRaf = requestAnimationFrame(tickProgress);
+    }
+
     function setSlide(index) {
       if (!slides.length) return;
       slides[currentSlideIndex]?.classList.remove('active');
@@ -160,10 +212,13 @@
         refreshIframe(iframe);
       }
 
+      const durationMs = getDurationMs(currentSlideIndex);
+      startProgress(durationMs);
+
       keepCheckinFocus();
       clearTimeout(slideTimer);
       if (slides.length > 1) {
-        slideTimer = setTimeout(() => setSlide(currentSlideIndex + 1), getDurationMs(currentSlideIndex));
+        slideTimer = setTimeout(() => setSlide(currentSlideIndex + 1), durationMs);
       }
     }
 

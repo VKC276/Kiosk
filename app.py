@@ -722,16 +722,53 @@ def api_input_devices():
     })
 
 
+def normalize_kiosk_slides(raw_slides):
+    """Normalisera slides från config (durationSeconds eller durationMs)."""
+    slides = []
+    for index, slide in enumerate(raw_slides or []):
+        if not isinstance(slide, dict) or not slide.get("url"):
+            continue
+        duration_ms = slide.get("durationMs")
+        if duration_ms is None and slide.get("durationSeconds") is not None:
+            duration_ms = int(float(slide["durationSeconds"]) * 1000)
+        if duration_ms is None:
+            duration_ms = 30000
+        slides.append({
+            "id": slide.get("id") or f"slide-{index + 1}",
+            "title": slide.get("title") or slide.get("id") or f"Slide {index + 1}",
+            "url": slide["url"],
+            "durationMs": max(1000, int(duration_ms)),
+        })
+    return slides
+
+
 @app.route('/')
 def kiosk():
-    """Hela kioskskärmen: rotator + incheckning."""
+    """Hela kioskskärmen: timer-styrd rotator + alltid synlig incheckning."""
     kiosk_cfg = config.get("KIOSK") or {}
-    slides = kiosk_cfg.get("slides") or []
-    checkin_path = kiosk_cfg.get("checkinPath", "/checkin")
+    checkin_cfg = kiosk_cfg.get("checkin") if isinstance(kiosk_cfg.get("checkin"), dict) else {}
+
+    # Bakåtkompatibilitet: checkinPath / saknad checkin-sektion
+    checkin_enabled = bool(checkin_cfg.get("enabled", True))
+    checkin_path = (
+        checkin_cfg.get("path")
+        or kiosk_cfg.get("checkinPath")
+        or "/checkin"
+    )
+    checkin_height = int(checkin_cfg.get("heightPercent", 20))
+    checkin_height = min(80, max(0, checkin_height))
+    if not checkin_enabled:
+        checkin_height = 0
+    content_height = 100 - checkin_height
+
     return render_template(
         'kiosk.html',
-        slides=slides,
+        slides=normalize_kiosk_slides(kiosk_cfg.get("slides")),
+        checkin_enabled=checkin_enabled,
         checkin_path=checkin_path,
+        checkin_height=checkin_height,
+        content_height=content_height,
+        reload_on_show=bool(kiosk_cfg.get("reloadOnShow", True)),
     )
 
 

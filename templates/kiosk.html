@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Västerviks klättercenter Kiosk</title>
   <style>
+    :root {
+      --checkin-height: {{ checkin_height }}%;
+      --content-height: {{ content_height }}%;
+    }
     html, body {
       margin: 0;
       padding: 0;
@@ -25,26 +29,27 @@
     }
 
     .rotator-section {
-      height: 80%;
+      height: var(--content-height);
       width: 100%;
       position: relative;
       overflow: hidden;
     }
 
+    .rotator-section.full {
+      height: 100%;
+    }
+
     .rotator-slide {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      inset: 0;
       opacity: 0;
-      transition: opacity 1s ease-in-out;
+      transition: opacity 0.8s ease-in-out;
+      /* Innehåll är display-only — ingen Space/tangentfokus stjäl från incheckning */
       pointer-events: none;
     }
 
     .rotator-slide.active {
       opacity: 1;
-      pointer-events: auto;
     }
 
     .rotator-slide iframe {
@@ -55,7 +60,7 @@
     }
 
     .card-reader-section {
-      height: 20%;
+      height: var(--checkin-height);
       width: 100%;
       box-sizing: border-box;
       background-color: #ffffff;
@@ -73,66 +78,107 @@
 </head>
 <body>
   <div class="main-container">
-    <div class="rotator-section">
+    <div class="rotator-section{% if not checkin_enabled %} full{% endif %}" id="rotator">
       {% for slide in slides %}
       <div
         class="rotator-slide{% if loop.first %} active{% endif %}"
-        data-duration="{{ slide.durationMs }}"
+        data-duration-ms="{{ slide.durationMs }}"
+        data-url="{{ slide.url }}"
         id="slide-{{ slide.id }}"
       >
         <iframe
           id="iframe-{{ slide.id }}"
-          src="{{ slide.url }}"
-          data-base="{{ slide.url }}"
           title="{{ slide.title }}"
+          tabindex="-1"
+          loading="lazy"
+          data-base="{{ slide.url }}"
+          {% if loop.first %}src="{{ slide.url }}"{% endif %}
         ></iframe>
       </div>
       {% endfor %}
     </div>
 
+    {% if checkin_enabled %}
     <div class="card-reader-section">
       <iframe
+        id="checkin-frame"
         src="{{ checkin_path }}"
         title="MIFARE Kortläsarstatus"
         loading="eager"
       ></iframe>
     </div>
+    {% endif %}
   </div>
 
   <script>
-    const slides = document.querySelectorAll('.rotator-slide');
+    const RELOAD_ON_SHOW = {{ 'true' if reload_on_show else 'false' }};
+    const slides = Array.from(document.querySelectorAll('.rotator-slide'));
     let currentSlideIndex = 0;
-    let slideTimer;
+    let slideTimer = null;
 
-    function refreshIframe(iframe) {
-      if (!iframe) return;
-      const baseUrl = iframe.getAttribute('data-base') || iframe.src.split('?')[0];
-      const joiner = baseUrl.includes('?') ? '&' : '?';
-      iframe.src = `${baseUrl}${joiner}refresh=${Date.now()}`;
+    function keepCheckinFocus() {
+      const checkin = document.getElementById('checkin-frame');
+      if (checkin) {
+        try { checkin.focus({ preventScroll: true }); } catch (_) {}
+      } else {
+        window.focus();
+      }
     }
 
-    function getSlideDuration(index) {
-      return parseInt(slides[index].getAttribute('data-duration'), 10) || 30000;
+    function ensureSrc(slide) {
+      const iframe = slide.querySelector('iframe');
+      if (!iframe) return null;
+      const base = iframe.getAttribute('data-base') || slide.dataset.url;
+      if (!iframe.getAttribute('src')) {
+        iframe.src = base;
+      }
+      return iframe;
+    }
+
+    function refreshIframe(iframe) {
+      if (!iframe || !RELOAD_ON_SHOW) return;
+      const base = iframe.getAttribute('data-base') || iframe.src.split('?')[0].split('&')[0];
+      const clean = base.replace(/([?&])refresh=\d+/g, '').replace(/[?&]$/, '');
+      const joiner = clean.includes('?') ? '&' : '?';
+      iframe.src = `${clean}${joiner}refresh=${Date.now()}`;
+    }
+
+    function getDurationMs(index) {
+      const raw = parseInt(slides[index].dataset.durationMs, 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : 30000;
     }
 
     function setSlide(index) {
       if (!slides.length) return;
       slides[currentSlideIndex]?.classList.remove('active');
-      currentSlideIndex = index;
-      slides[currentSlideIndex].classList.add('active');
+      currentSlideIndex = ((index % slides.length) + slides.length) % slides.length;
+      const slide = slides[currentSlideIndex];
+      slide.classList.add('active');
 
-      slides[currentSlideIndex].querySelectorAll('iframe').forEach(refreshIframe);
+      const iframe = ensureSrc(slide);
+      if (iframe && iframe.getAttribute('src')) {
+        refreshIframe(iframe);
+      }
 
+      keepCheckinFocus();
       clearTimeout(slideTimer);
-      slideTimer = setTimeout(nextSlide, getSlideDuration(currentSlideIndex));
+      if (slides.length > 1) {
+        slideTimer = setTimeout(() => setSlide(currentSlideIndex + 1), getDurationMs(currentSlideIndex));
+      }
     }
 
-    function nextSlide() {
-      setSlide((currentSlideIndex + 1) % slides.length);
-    }
+    // Blockera Space/piltangenter från att "läcka" till innehåll — byten styrs bara av timer.
+    window.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.code === 'Space' || e.key.startsWith('Arrow')) {
+        e.preventDefault();
+        keepCheckinFocus();
+      }
+    }, true);
 
     document.addEventListener('DOMContentLoaded', () => {
+      keepCheckinFocus();
       if (slides.length > 0) setSlide(0);
+      setInterval(keepCheckinFocus, 5000);
     });
   </script>
 </body>

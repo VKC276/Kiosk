@@ -68,15 +68,32 @@ Reboot en gång efter första install så att `input`-behörigheten tar effekt.
 }
 ```
 
-### Cache / timeouts / kortformat / server / slides
+### Cache / timeouts / kortformat / server
 
-Se nycklarna `CACHE`, `TIMEOUTS`, `CARD_PROCESSING`, `SERVER`, `DIAGRAM_ROTATOR`, `KIOSK` i `config.json`.
+Se nycklarna `CACHE`, `TIMEOUTS`, `CARD_PROCESSING`, `SERVER` i `config.json`.
+
+### Kiosk-slides (ingen Space behövs)
+
+Övre delen byter sida **automatiskt** enligt timer. Incheckningen ligger kvar under — fokus stannar där, så du slipper Space-bläddring.
+
+```json
+"KIOSK": {
+  "checkin": { "enabled": true, "path": "/checkin", "heightPercent": 20 },
+  "reloadOnShow": true,
+  "slides": [
+    { "id": "top-sends", "title": "Topp Senders", "url": "https://...", "durationSeconds": 100 },
+    { "id": "chart-1", "title": "Sändningar/dag", "url": "https://...", "durationSeconds": 15 },
+    { "id": "wallflow", "title": "WallFlow", "url": "https://wallflow.vastervikclimbing.se/display.html", "durationSeconds": 60 }
+  ]
+}
+```
+
+Lägg till/ta bort/ändra ordning och `durationSeconds` per sida i config. (`durationMs` går också bra.)
 
 ## URL:er
 
-- `/` – hel kiosk
+- `/` – hel kiosk (timer-slides + incheckning)
 - `/checkin` – bara incheckning
-- `/diagrams` – diagramrotator
 - `/healthz` – hälsokoll
 - `/api/input-devices` – lista input-enheter
 

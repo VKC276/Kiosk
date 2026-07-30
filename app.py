@@ -5,72 +5,127 @@ import time
 import queue
 
 import requests
-from evdev import InputDevice, ecodes
+from evdev import InputDevice, ecodes, list_devices
 from flask import Flask, jsonify, render_template
 
 # --- KONFIGURATION OCH GLOBALA VARIABLER ---
 
-# Globalt tillstånd för webbgränssnittet
 current_card_status = None
 LAST_READ_TIME = 0
-REST_TIMEOUT_SECONDS = 3  # Visningstid för status på skärmen (ändra vid behov)
 IS_CLIPPING_ACTIVE = False
 STATUS_LOCK = threading.Lock()
-
-# SSE-kö för push till kioskgränssnittet
 sse_queue = queue.Queue()
 
-# Bakgrundstrådar ska bara startas en gång (wsgi / gunicorn / __main__)
 _THREADS_STARTED = False
 _THREADS_START_LOCK = threading.Lock()
 
-# *** KORT-ID LÄNGD BASERAT PÅ 4 BYTE (32-BIT) ***
-MIN_CARD_ID_LENGTH = 5
-MAX_CARD_ID_LENGTH = 10
-HEX_ID_LENGTH = 10
-
-# --- Caching variabler ---
 CARD_CACHE = []
-TENCARD_CACHE = {} # Dictionary för snabb uppslagning av 10-kort (Kortnummer: Data)
+TENCARD_CACHE = {}
 CACHE_LAST_UPDATE = 0
-CACHE_EXPIRY_SECONDS = 3600
-CACHE_UPDATE_INTERVAL = 1800 # Exempel: Ändra till 300 för 5 minuters uppdatering
 SHOULD_RUN = True
-# -------------------------
+ACTIVE_READER_DEVICE = None
 
-# Lista över alla tangentkoder för siffrorna 0-9 och A-F (för att stödja Hex-ID)
 CARD_KEY_CODES = {
     ecodes.KEY_0: '0', ecodes.KEY_1: '1', ecodes.KEY_2: '2', ecodes.KEY_3: '3',
     ecodes.KEY_4: '4', ecodes.KEY_5: '5', ecodes.KEY_6: '6', ecodes.KEY_7: '7',
     ecodes.KEY_8: '8', ecodes.KEY_9: '9',
-    
-    # A-F Koder (vanliga tangentbordstangenter)
     ecodes.KEY_A: 'A', ecodes.KEY_B: 'B', ecodes.KEY_C: 'C',
-    ecodes.KEY_D: 'D', ecodes.KEY_E: 'E', ecodes.KEY_F: 'F'
+    ecodes.KEY_D: 'D', ecodes.KEY_E: 'E', ecodes.KEY_F: 'F',
 }
 
-# Laddar config.json
+
 def load_config():
     config_path = os.path.join(os.path.dirname(__file__), 'config.json')
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        print(f"FEL: Kunde inte ladda config.json. Kontrollera att filen finns och har korrekt JSON-syntax. Fel: {e}")
+        print(
+            "FEL: Kunde inte ladda config.json. "
+            f"Kontrollera att filen finns och har korrekt JSON-syntax. Fel: {e}"
+        )
         return {}
+
+
+def cfg_section(name, default=None):
+    value = config.get(name)
+    if isinstance(value, dict):
+        return value
+    return default if default is not None else {}
+
 
 config = load_config()
 
-# LÄS IN KONFIGURATIONSVÄRDEN
-CARD_FORMAT = config.get('CARD_PROCESSING', {}).get('FORMAT', 'DEC10').upper()
-BYTE_ORDER = config.get('CARD_PROCESSING', {}).get('BYTE_ORDER', 'NORMAL').upper()
-# 10-KORT URL:er (ANPASSADE TILL DINA NYCKELNAMN)
+READER_CFG = cfg_section("READER")
+SERVER_CFG = cfg_section("SERVER")
+CACHE_CFG = cfg_section("CACHE")
+TIMEOUTS_CFG = cfg_section("TIMEOUTS")
+CARD_CFG = cfg_section("CARD_PROCESSING")
+
+# Bakåtkompatibilitet med äldre config-nycklar
+READER_DEVICE = READER_CFG.get("device") or config.get("READER_DEVICE") or "/dev/input/event0"
+READER_NAME_CONTAINS = (READER_CFG.get("nameContains") or "").strip()
+READER_GRAB = bool(READER_CFG.get("grab", True))
+
+SERVER_HOST = SERVER_CFG.get("host", "0.0.0.0")
+SERVER_PORT = int(SERVER_CFG.get("port", 8081))
+
+CACHE_UPDATE_INTERVAL = int(CACHE_CFG.get("updateIntervalSeconds", 1800))
+CACHE_FETCH_TIMEOUT = int(CACHE_CFG.get("fetchTimeoutSeconds", 30))
+CACHE_USER_AGENT = CACHE_CFG.get("userAgent", "Mifare Reader Backend")
+
+REST_TIMEOUT_SECONDS = int(TIMEOUTS_CFG.get("statusDisplaySeconds", 3))
+LOG_REQUEST_TIMEOUT = int(TIMEOUTS_CFG.get("logRequestSeconds", 5))
+CLIP_REQUEST_TIMEOUT = int(TIMEOUTS_CFG.get("clipRequestSeconds", 10))
+SSE_HEARTBEAT_SECONDS = int(TIMEOUTS_CFG.get("sseHeartbeatSeconds", 20))
+
+CARD_FORMAT = str(CARD_CFG.get("FORMAT", "DEC10")).upper()
+BYTE_ORDER = str(CARD_CFG.get("BYTE_ORDER", "NORMAL")).upper()
+MIN_CARD_ID_LENGTH = int(CARD_CFG.get("minIdLength", 5))
+MAX_CARD_ID_LENGTH = int(CARD_CFG.get("maxIdLength", 10))
+DECIMAL_PAD_LENGTH = int(CARD_CFG.get("decimalPadLength", 10))
+
 TENCARD_DATA_URL = config.get("TEN_VISIT_DATA_URL")
 TENCARD_CLIP_URL = config.get("GAS_UPDATE_URL_BASE")
-# --------------------------------
 
-# FLASK Setup
 app = Flask(__name__)
+
+
+def list_input_devices_info():
+    devices = []
+    for path in sorted(list_devices()):
+        try:
+            dev = InputDevice(path)
+            devices.append({"path": path, "name": dev.name})
+        except OSError as exc:
+            devices.append({"path": path, "name": None, "error": str(exc)})
+    return devices
+
+
+def resolve_reader_device():
+    """Välj kortläsare via path och/eller namnmatchning från config."""
+    if READER_NAME_CONTAINS:
+        needle = READER_NAME_CONTAINS.lower()
+        matches = [
+            d for d in list_input_devices_info()
+            if d.get("name") and needle in d["name"].lower()
+        ]
+        if len(matches) == 1:
+            return matches[0]["path"]
+        if len(matches) > 1:
+            paths = ", ".join(d["path"] for d in matches)
+            print(
+                f"VARNING: nameContains '{READER_NAME_CONTAINS}' matchade flera enheter "
+                f"({paths}). Använder device-path om den finns."
+            )
+        elif not READER_DEVICE:
+            print(
+                f"KRITISKT FEL: Ingen input-enhet matchade nameContains "
+                f"'{READER_NAME_CONTAINS}'."
+            )
+            return None
+
+    return READER_DEVICE or None
 
 
 def start_background_threads():
@@ -93,10 +148,8 @@ def convert_card_id(raw_card_id: str) -> str:
 
     if CARD_FORMAT == "DEC10":
         # Nollfyller ID:n som trunkerats av läsaren
-        if card_id.isdigit() and len(card_id) < MAX_CARD_ID_LENGTH:
-            if len(card_id) < 10:
-                card_id = card_id.zfill(10)
-        
+        if card_id.isdigit() and len(card_id) < DECIMAL_PAD_LENGTH:
+            card_id = card_id.zfill(DECIMAL_PAD_LENGTH)
         return card_id
 
     if CARD_FORMAT == "HEX10":
@@ -124,12 +177,10 @@ def convert_card_id(raw_card_id: str) -> str:
 # --- LOGGNING (SEPARAT TRÅD) ---
 def log_card_read_task(card_id, log_url):
     """Körs i bakgrunden för att skicka loggdata till det separata loggarket."""
-    LOG_REQUEST_TIMEOUT = 5
-    
     if not isinstance(card_id, str) or not card_id:
         print(f"[BAKGRUND] FEL: Ogiltigt eller tomt kort-ID för loggning: {card_id}")
         return
-    
+
     try:
         response = requests.post(log_url, data={'card_id': card_id}, timeout=LOG_REQUEST_TIMEOUT)
         
@@ -170,7 +221,6 @@ def start_background_clip(card_id, callback):
     Startar ett klipp (API-anrop) i en ny tråd.
     Anropar en callback-funktion med resultatet.
     """
-    CLIP_REQUEST_TIMEOUT = 10
     if not TENCARD_CLIP_URL:
         print("FEL: TENCARD_CLIP_URL (GAS_UPDATE_URL_BASE) saknas. Kan inte klippa.")
         callback("error", "Konfigurationsfel", "TENCARD_CLIP_URL saknas.")
@@ -181,7 +231,7 @@ def start_background_clip(card_id, callback):
             response = requests.post(
                 TENCARD_CLIP_URL,
                 data={'card_id': card_id},
-                timeout=CLIP_REQUEST_TIMEOUT
+                timeout=CLIP_REQUEST_TIMEOUT,
             )
             
             if response.status_code == 200:
@@ -273,12 +323,12 @@ def fetch_latest_card_data(data_url):
     print(f"CACHE: Försöker hämta ny data från {data_url}...")
     
     headers = {
-        'User-Agent': 'Mifare Reader Backend',
-        'Accept': 'application/json'
+        'User-Agent': CACHE_USER_AGENT,
+        'Accept': 'application/json',
     }
-    
+
     try:
-        response = requests.get(data_url, headers=headers, timeout=30)
+        response = requests.get(data_url, headers=headers, timeout=CACHE_FETCH_TIMEOUT)
         
         if response.status_code == 200:
             
@@ -513,22 +563,29 @@ def handle_card_read(card_id):
 
 def card_reader_thread():
     """Huvudtråd som konstant lyssnar på MIFARE-läsaren via evdev."""
-    global current_card_status, LAST_READ_TIME, sse_queue
+    global current_card_status, LAST_READ_TIME, ACTIVE_READER_DEVICE
 
-    device_path = config.get("READER_DEVICE")
+    device_path = resolve_reader_device()
     if not device_path:
-        print("KRITISKT FEL: READER_DEVICE saknas i config.json. Kan inte starta läsartråd.")
+        print(
+            "KRITISKT FEL: Ingen kortläsare angiven. "
+            "Sätt READER.device eller READER.nameContains i config.json."
+        )
+        print("Tips: python scripts/list_input_devices.py")
         return
 
+    ACTIVE_READER_DEVICE = device_path
     dev = None
-    
+
     try:
         dev = InputDevice(device_path)
         print(f"Kortläsartråd startad. Lyssnar på: {dev.name} ({device_path})")
-        dev.grab()
-        
+        if READER_GRAB:
+            dev.grab()
+
     except FileNotFoundError:
         print(f"KRITISKT FEL: Hittade inte enheten vid {device_path}.")
+        print("Tips: python scripts/list_input_devices.py")
         return
     except PermissionError as e:
         print(f"KRITISKT FEL: Behörighetsfel vid öppning/grab av {device_path}. FEL: {e}")
@@ -608,7 +665,7 @@ def card_reader_thread():
         print(f"KRITISKT FEL: Ett oväntat fel uppstod i lästråden: {e}")
 
     finally:
-        if dev:
+        if dev and READER_GRAB:
             try:
                 dev.ungrab()
                 print("DEBUG UNGRAB: Släppte exklusiv kontroll över enheten.")
@@ -624,7 +681,7 @@ def stream():
     def event_stream():
         while True:
             try:
-                message = sse_queue.get(timeout=20)
+                message = sse_queue.get(timeout=SSE_HEARTBEAT_SECONDS)
                 if message == "start_read":
                     yield 'data: start\n\n'
                 elif message == "read_complete":
@@ -644,9 +701,24 @@ def stream():
 def healthz():
     return jsonify({
         "ok": True,
+        "reader_device": ACTIVE_READER_DEVICE,
+        "cache_update_interval_seconds": CACHE_UPDATE_INTERVAL,
         "members_cached": len(CARD_CACHE),
         "tencards_cached": len(TENCARD_CACHE),
         "clipping": IS_CLIPPING_ACTIVE,
+    })
+
+
+@app.route('/api/input-devices')
+def api_input_devices():
+    """Lista tangentbords-/input-enheter för att välja rätt READER.device."""
+    return jsonify({
+        "devices": list_input_devices_info(),
+        "configured": {
+            "device": READER_DEVICE,
+            "nameContains": READER_NAME_CONTAINS,
+            "active": ACTIVE_READER_DEVICE,
+        },
     })
 
 
@@ -685,12 +757,23 @@ def checkin():
     )
 
 
+@app.route('/diagrams')
+def diagrams():
+    """Roterande Google Charts — styrs via DIAGRAM_ROTATOR i config.json."""
+    diagram_cfg = config.get("DIAGRAM_ROTATOR") or {}
+    return render_template(
+        'diagram_rotator.html',
+        charts=diagram_cfg.get("charts") or [],
+        interval_ms=int(diagram_cfg.get("intervalMs", 10000)),
+    )
+
+
 # --- START ---
 
 if __name__ == '__main__':
     start_background_threads()
     try:
-        app.run(host='0.0.0.0', port=8081, debug=False)
+        app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False)
     except KeyboardInterrupt:
         print("\nApplikationen stängs av...")
     finally:

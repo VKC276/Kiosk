@@ -1,12 +1,47 @@
 {
-  "READER_DEVICE": "/dev/input/event0",
+  "READER": {
+    "device": "/dev/input/event0",
+    "nameContains": "",
+    "grab": true
+  },
+  "SERVER": {
+    "host": "0.0.0.0",
+    "port": 8081
+  },
+  "CACHE": {
+    "updateIntervalSeconds": 1800,
+    "fetchTimeoutSeconds": 30,
+    "userAgent": "Mifare Reader Backend"
+  },
+  "TIMEOUTS": {
+    "statusDisplaySeconds": 3,
+    "logRequestSeconds": 5,
+    "clipRequestSeconds": 10,
+    "sseHeartbeatSeconds": 20
+  },
+  "CARD_PROCESSING": {
+    "FORMAT": "HEX10",
+    "BYTE_ORDER": "REVERSED",
+    "minIdLength": 5,
+    "maxIdLength": 10,
+    "decimalPadLength": 10
+  },
   "DATA_URL": "https://script.google.com/macros/s/AKfycbywl9-WmEHvlPDJndkzkRcZWgqQWiMKxX8AJEZ59qCmw_BdE11CGQ6hlRi-kYZmSL8Hug/exec",
   "LOG_URL": "https://script.google.com/macros/s/AKfycbwiHoUbNl5TvyyKaeYL1648jsy5RqEvNN7btZNAE83kUQwkm7XCCxr5KOymwFP297yn/exec",
   "TEN_VISIT_DATA_URL": "https://script.google.com/macros/s/AKfycbxu3XPnensff2x5Q82F4J5fAXYKfRvGSW0BGWCKXacgvd41WlUzCKs2QSyzqyki79EZ-Q/exec",
   "GAS_UPDATE_URL_BASE": "https://script.google.com/macros/s/AKfycbzC1vXZS-qm8OnqNi0wePeJLetTkx92snjCazRDm6cNyKMg9j3pFnaLOO4nWLCOb_fQQQ/exec",
-  "CARD_PROCESSING": {
-    "FORMAT": "HEX10",
-    "BYTE_ORDER": "REVERSED"
+  "DIAGRAM_ROTATOR": {
+    "intervalMs": 10000,
+    "charts": [
+      {
+        "title": "Antal sändningar per dag",
+        "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vS6IMv3bGw9e7xm_L5TTs9ipMnICRvZueuyv9QN_tOcw_RJO9xA-CKnTq6yBjwxBmgHEZ1UqbpPhsBa/pubchart?oid=1248229822&format=interactive"
+      },
+      {
+        "title": "Fördelning av sändningar per svårighetsgrad",
+        "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vS6IMv3bGw9e7xm_L5TTs9ipMnICRvZueuyv9QN_tOcw_RJO9xA-CKnTq6yBjwxBmgHEZ1UqbpPhsBa/pubchart?oid=389844657&format=interactive"
+      }
+    ]
   },
   "KIOSK": {
     "checkinPath": "/checkin",
@@ -20,7 +55,7 @@
       {
         "id": "charts",
         "title": "Roterande statistikdiagram",
-        "url": "/static/diagram_rotator.html",
+        "url": "/diagrams",
         "durationMs": 30000
       }
     ]

@@ -1,0 +1,31 @@
+[Unit]
+Description=VKC Kiosk API (kortläsare + webb)
+Documentation=https://github.com/VKC276/Kiosk
+Requires=network-online.target
+After=network-online.target
+Wants=systemd-udev-settle.service
+After=systemd-udev-settle.service
+
+[Service]
+Type=simple
+User=__KIOSK_USER__
+Group=__KIOSK_USER__
+WorkingDirectory=__KIOSK_DIR__
+Environment=PATH=__KIOSK_DIR__/venv/bin:/usr/local/bin:/usr/bin
+ExecStartPre=/usr/bin/sleep 3
+ExecStart=__KIOSK_DIR__/venv/bin/gunicorn \
+  -w 1 \
+  -k gevent \
+  --timeout 0 \
+  -b __SERVER_HOST__:__SERVER_PORT__ \
+  wsgi:app
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Ge tillgång till /dev/input (kräver även membership i gruppen input)
+SupplementaryGroups=input
+
+[Install]
+WantedBy=multi-user.target

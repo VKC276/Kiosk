@@ -150,13 +150,13 @@ h1 {
 </div>
 <script>
  const statusBoxWrapper = document.getElementById('status-box-wrapper');
- const apiRoute = '/';
+ const apiRoute = '/checkin';
 
  // --- LJUDKONFIGURATION ---
  // Se till att filerna success.mp3, failure.mp3 och warning.mp3 ligger i mappen static/
- const audioSuccess = new Audio('static/success.mp3'); // Godkänd (ACTIVE, TENCARD_CLIPPED_OK, TENCARD_READY)
- const audioFailure = new Audio('static/failure.mp3'); // Misslyckad (EXPIRED, NOT_FOUND, TENCARD_EXHAUSTED etc.)
- const audioWarning = new Audio('static/warning.mp3'); // Varning (EXPIRING_SOON)
+ const audioSuccess = new Audio('/static/success.mp3'); // Godkänd (ACTIVE, TENCARD_CLIPPED_OK, TENCARD_READY)
+ const audioFailure = new Audio('/static/failure.mp3'); // Misslyckad (EXPIRED, NOT_FOUND, TENCARD_EXHAUSTED etc.)
+ const audioWarning = new Audio('/static/warning.mp3'); // Varning (EXPIRING_SOON)
 
  let lastPlayedStatus = null;
 

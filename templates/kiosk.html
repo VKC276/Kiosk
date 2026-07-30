@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Västerviks klättercenter Kiosk</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+      box-sizing: border-box;
+      cursor: none !important;
+    }
+
+    .main-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+    }
+
+    .rotator-section {
+      height: 80%;
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .rotator-slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      transition: opacity 1s ease-in-out;
+      pointer-events: none;
+    }
+
+    .rotator-slide.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .rotator-slide iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background-color: #f0f0f0;
+    }
+
+    .card-reader-section {
+      height: 20%;
+      width: 100%;
+      box-sizing: border-box;
+      background-color: #ffffff;
+      border-top: 5px solid #ccc;
+      padding: 0;
+    }
+
+    .card-reader-section iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="main-container">
+    <div class="rotator-section">
+      {% for slide in slides %}
+      <div
+        class="rotator-slide{% if loop.first %} active{% endif %}"
+        data-duration="{{ slide.durationMs }}"
+        id="slide-{{ slide.id }}"
+      >
+        <iframe
+          id="iframe-{{ slide.id }}"
+          src="{{ slide.url }}"
+          data-base="{{ slide.url }}"
+          title="{{ slide.title }}"
+        ></iframe>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="card-reader-section">
+      <iframe
+        src="{{ checkin_path }}"
+        title="MIFARE Kortläsarstatus"
+        loading="eager"
+      ></iframe>
+    </div>
+  </div>
+
+  <script>
+    const slides = document.querySelectorAll('.rotator-slide');
+    let currentSlideIndex = 0;
+    let slideTimer;
+
+    function refreshIframe(iframe) {
+      if (!iframe) return;
+      const baseUrl = iframe.getAttribute('data-base') || iframe.src.split('?')[0];
+      const joiner = baseUrl.includes('?') ? '&' : '?';
+      iframe.src = `${baseUrl}${joiner}refresh=${Date.now()}`;
+    }
+
+    function getSlideDuration(index) {
+      return parseInt(slides[index].getAttribute('data-duration'), 10) || 30000;
+    }
+
+    function setSlide(index) {
+      if (!slides.length) return;
+      slides[currentSlideIndex]?.classList.remove('active');
+      currentSlideIndex = index;
+      slides[currentSlideIndex].classList.add('active');
+
+      slides[currentSlideIndex].querySelectorAll('iframe').forEach(refreshIframe);
+
+      clearTimeout(slideTimer);
+      slideTimer = setTimeout(nextSlide, getSlideDuration(currentSlideIndex));
+    }
+
+    function nextSlide() {
+      setSlide((currentSlideIndex + 1) % slides.length);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (slides.length > 0) setSlide(0);
+    });
+  </script>
+</body>
+</html>

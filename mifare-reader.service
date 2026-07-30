@@ -1,29 +1,27 @@
 [Unit]
-Description=MIFARE Card Reader Flask App
-# 1. Nätverk: Väntar tills nätverket är helt UPPE och anslutet (ej bara konfigurerat).
+Description=VKC Kiosk + MIFARE-kortläsare
 Requires=network-online.target
 After=network-online.target
-
-# 2. Hårdvara: Väntar tills udev har skapat alla enhetsnoder (viktigt för USB-kortläsaren).
 Wants=systemd-udev-settle.service
 After=systemd-udev-settle.service
 
 [Service]
 User=vkc
 WorkingDirectory=/home/vkc/mifare-reader
-
-# FÖRDRÖJNING: Lägger till en 5 sekunders paus innan huvudkommandot körs (systemd-idiomatiskt).
 ExecStartPre=/usr/bin/sleep 5
-
-# --- DEN NYA RADEN: STARTAR MED GUNICORN/GEVENT FÖR STABIL SSE ---
-
-ExecStart=/home/vkc/mifare-reader/venv/bin/gunicorn -w 1 -k gevent --timeout 0 -b 0.0.0.0:8081 wsgi:app
+# En worker: kortläsare + cache ska bara köras en gång.
+# gevent + --timeout 0 behövs för stabil SSE.
+ExecStart=/home/vkc/mifare-reader/venv/bin/gunicorn \
+  -w 1 \
+  -k gevent \
+  --timeout 0 \
+  -b 0.0.0.0:8081 \
+  wsgi:app
 Restart=always
+RestartSec=3
 StandardOutput=journal
 StandardError=journal
-# Denna rad kan tas bort då Gunicorn-kommandot är absolut, men den skadar inte:
 Environment=PATH=/home/vkc/mifare-reader/venv/bin
 
 [Install]
 WantedBy=multi-user.target
-

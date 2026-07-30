@@ -2,23 +2,27 @@ import json
 import os
 import threading
 import time
-import requests
-from flask import Flask, render_template
-from evdev import InputDevice, ecodes, categorize
 import queue
+
+import requests
+from evdev import InputDevice, ecodes
+from flask import Flask, jsonify, render_template
 
 # --- KONFIGURATION OCH GLOBALA VARIABLER ---
 
 # Globalt tillstånd för webbgränssnittet
 current_card_status = None
 LAST_READ_TIME = 0
-REST_TIMEOUT_SECONDS = 3 # Visningstid för status på skärmen (ändra vid behov)
-
-### KORRIGERAD KOD: GLOBAL FLAGGA FÖR ATT SKYDDA PÅGÅENDE KLIPP ###
+REST_TIMEOUT_SECONDS = 3  # Visningstid för status på skärmen (ändra vid behov)
 IS_CLIPPING_ACTIVE = False
+STATUS_LOCK = threading.Lock()
 
-# NY GLOBAL KÖ FÖR SSE-MEDDELANDEN
+# SSE-kö för push till kioskgränssnittet
 sse_queue = queue.Queue()
+
+# Bakgrundstrådar ska bara startas en gång (wsgi / gunicorn / __main__)
+_THREADS_STARTED = False
+_THREADS_START_LOCK = threading.Lock()
 
 # *** KORT-ID LÄNGD BASERAT PÅ 4 BYTE (32-BIT) ***
 MIN_CARD_ID_LENGTH = 5
@@ -67,6 +71,18 @@ TENCARD_CLIP_URL = config.get("GAS_UPDATE_URL_BASE")
 
 # FLASK Setup
 app = Flask(__name__)
+
+
+def start_background_threads():
+    """Startar cache- och kortläsartrådar exakt en gång per process."""
+    global _THREADS_STARTED
+    with _THREADS_START_LOCK:
+        if _THREADS_STARTED:
+            return
+        _THREADS_STARTED = True
+        threading.Thread(target=cache_updater_thread, daemon=True).start()
+        threading.Thread(target=card_reader_thread, daemon=True).start()
+        print("Bakgrundstrådar startade (cache + kortläsare).")
 
 # --- KORTKONVERTERINGSFUNKTION ---
 def convert_card_id(raw_card_id: str) -> str:
@@ -192,70 +208,63 @@ def handle_ten_card_clip_callback(thread_type, api_status, api_data):
     global current_card_status, LAST_READ_TIME, TENCARD_CACHE
     global IS_CLIPPING_ACTIVE
 
-    # Felet uppstår här om current_card_status är None. Vi gör nu en säkerhetskoll.
-    if current_card_status is None:
-        print("[KLIPP] KRITISKT FEL: current_card_status var None i callback. Kortet klipptes (troligen), men GUI-status missades.")
-        # Vi måste ändå släppa låset, men kan inte uppdatera GUI:et korrekt.
-        IS_CLIPPING_ACTIVE = False
-        return
+    with STATUS_LOCK:
+        if current_card_status is None:
+            print(
+                "[KLIPP] KRITISKT FEL: current_card_status var None i callback. "
+                "Kortet klipptes (troligen), men GUI-status missades."
+            )
+            IS_CLIPPING_ACTIVE = False
+            return
 
-    # Hantera resultatet från klipp-API:et
-    card_id = current_card_status.get("card_number_dec", "Okänt ID")
-    
-    if thread_type == "success":
-        clip_status = api_data.get("status", "fail")
-        
-        if clip_status == "success":
-            klipp_kvar_server = api_data.get("klipp_kvar")
-            print(f"[KLIPP] Klipp OK för kort {card_id}. {klipp_kvar_server} klipp kvar.")
-            
-            if card_id in TENCARD_CACHE:
-                TENCARD_CACHE[card_id]["Antal kvarvarande besök"] = klipp_kvar_server
-            
-            # Uppdatera aktuellt statusobjekt (gränssnittet)
-            current_card_status["status"] = "TENCARD_CLIPPED_OK"
-            current_card_status["message"] = f"Klipp OK! {klipp_kvar_server} klipp kvar."
-            current_card_status["secondary_message"] = current_card_status.get("member_name", "")
-            current_card_status["status_color"] = "green"
-            current_card_status["color_code"] = "#4CAF50"
-        
-        elif clip_status == "fail" and api_data.get("reason") == "slut":
-            print(f"[KLIPP] Klipp misslyckades: Slut på klipp för kort {card_id}.")
-            current_card_status["status"] = "TENCARD_CLIP_FAIL_EXHAUSTED"
-            current_card_status["message"] = "Klipp misslyckades: 0 klipp kvar!"
-            current_card_status["secondary_message"] = "Vänligen köp nytt kort."
-            current_card_status["status_color"] = "red"
-            current_card_status["color_code"] = "#F44336"
-            
+        card_id = current_card_status.get("card_number_dec", "Okänt ID")
+
+        if thread_type == "success":
+            clip_status = api_data.get("status", "fail")
+
+            if clip_status == "success":
+                klipp_kvar_server = api_data.get("klipp_kvar")
+                print(f"[KLIPP] Klipp OK för kort {card_id}. {klipp_kvar_server} klipp kvar.")
+
+                if card_id in TENCARD_CACHE:
+                    TENCARD_CACHE[card_id]["Antal kvarvarande besök"] = klipp_kvar_server
+
+                current_card_status["status"] = "TENCARD_CLIPPED_OK"
+                current_card_status["message"] = f"Klipp OK! {klipp_kvar_server} klipp kvar."
+                current_card_status["secondary_message"] = current_card_status.get("member_name", "")
+                current_card_status["status_color"] = "green"
+                current_card_status["color_code"] = "#4CAF50"
+
+            elif clip_status == "fail" and api_data.get("reason") == "slut":
+                print(f"[KLIPP] Klipp misslyckades: Slut på klipp för kort {card_id}.")
+                current_card_status["status"] = "TENCARD_CLIP_FAIL_EXHAUSTED"
+                current_card_status["message"] = "Klipp misslyckades: 0 klipp kvar!"
+                current_card_status["secondary_message"] = "Vänligen köp nytt kort."
+                current_card_status["status_color"] = "red"
+                current_card_status["color_code"] = "#F44336"
+
+            else:
+                print(f"[KLIPP] Klipp-API svarade fail/okänd anledning: {api_data}")
+                current_card_status["status"] = "TENCARD_CLIP_FAIL_UNKNOWN"
+                current_card_status["message"] = "Klipp misslyckades (okänt fel i API)."
+                current_card_status["secondary_message"] = f"Status: {api_status}"
+                current_card_status["status_color"] = "orange"
+                current_card_status["color_code"] = "#FF9800"
+
         else:
-            print(f"[KLIPP] Klipp-API svarade fail/okänd anledning: {api_data}")
-            current_card_status["status"] = "TENCARD_CLIP_FAIL_UNKNOWN"
-            current_card_status["message"] = "Klipp misslyckades (okänt fel i API)."
-            current_card_status["secondary_message"] = f"Status: {api_status}"
-            current_card_status["status_color"] = "orange"
-            current_card_status["color_code"] = "#FF9800"
-        
-    else: # Nätverksfel eller annat fel i tråden
-        print(f"[KLIPP] KRITISKT FEL vid klipp: {api_data}")
-        current_card_status["status"] = "TENCARD_CLIP_ERROR"
-        current_card_status["message"] = "KRITISKT FEL: Kunde inte klippa kortet."
-        current_card_status["secondary_message"] = "Klippning kan ha fullföljts på servern. Kontrollera saldo i kassan!"
-        current_card_status["status_color"] = "red"
-        current_card_status["color_code"] = "#D32F2F"
-        
-    
-    # ----------------------------------------------------------------
-    # --- KRITISK SYNKKRONISERING (Starta timern och släpp låset) ---
-    # ----------------------------------------------------------------
-    
-    # 1. Starta timern (nu startar nedräkningen för den slutgiltiga statusen)
-    LAST_READ_TIME = time.time()
-    
-    # 2. Skicka SSE-signal
+            print(f"[KLIPP] KRITISKT FEL vid klipp: {api_data}")
+            current_card_status["status"] = "TENCARD_CLIP_ERROR"
+            current_card_status["message"] = "KRITISKT FEL: Kunde inte klippa kortet."
+            current_card_status["secondary_message"] = (
+                "Klippning kan ha fullföljts på servern. Kontrollera saldo i kassan!"
+            )
+            current_card_status["status_color"] = "red"
+            current_card_status["color_code"] = "#D32F2F"
+
+        LAST_READ_TIME = time.time()
+        IS_CLIPPING_ACTIVE = False
+
     sse_queue.put("read_complete")
-    
-    # 3. Släpp låset (Gör att index() kan timeouta efter 3 sekunder)
-    IS_CLIPPING_ACTIVE = False
     print("[KLIPP] IS_CLIPPING_ACTIVE satt till False. Timeout startar nu.")
 
 
@@ -466,22 +475,19 @@ def handle_card_read(card_id):
     elif status_data.get("type") == "TENCARD":
         
         if status_data.get("status") == "TENCARD_READY":
-            
-            # 1. Sätt låset FÖRST: Hindrar index() från att rensa current_card_status under klippningen
-            global IS_CLIPPING_ACTIVE
+            # Sätt låset först så timeout inte rensar status under klippning.
             IS_CLIPPING_ACTIVE = True
             print("[KLIPP] IS_CLIPPING_ACTIVE satt till True (Början av klipp).")
-            
-            # 2. Sätt preliminär status
-            current_card_status = status_data.copy()
-            current_card_status["message"] = f"Behandlar klipp ({current_card_status['klipp_kvar_local']} kvar)..."
-            current_card_status["status_color"] = "blue"
-            current_card_status["color_code"] = "#2196F3"
-            
-            # OBS! Vi UPPDATERAR INTE LAST_READ_TIME OCH SKICKAR INTE SSE-SIGNAL HÄR!
-            # Detta säkerställer att timeout-timern inte startar förrän SLUTLIG status är känd.
-            
-            # Starta klipp-processen i bakgrunden. Resultatet hanteras i callback:en.
+
+            with STATUS_LOCK:
+                current_card_status = status_data.copy()
+                current_card_status["message"] = (
+                    f"Behandlar klipp ({current_card_status['klipp_kvar_local']} kvar)..."
+                )
+                current_card_status["status_color"] = "blue"
+                current_card_status["color_code"] = "#2196F3"
+
+            # Timeout/SSE startar först när slutstatus finns (i callback).
             return start_background_clip(card_id_str, handle_ten_card_clip_callback)
             
         # Om kortet hittades men är slut (TENCARD_EXHAUSTED), faller den igenom till steg 5 (visning)
@@ -493,13 +499,16 @@ def handle_card_read(card_id):
         if status_data.get("status") in ["ACTIVE", "EXPIRING_SOON"]:
             start_background_logging(card_id_str)
         
-    # 5. Uppdatera gränssnittet (Gäller för alla icke-klipp-kort eller fel)
-    current_card_status = status_data
-    LAST_READ_TIME = time.time()
-    # Tvinga fram en uppdatering av gränssnittet
-    sse_queue.put("read_complete") 
-    
-    print(f"Gränssnittet uppdateras till status: {status_data.get('message', 'Okänd status')}. ID: {card_id_str}")
+    # 5. Uppdatera gränssnittet (gäller icke-klipp-kort eller fel)
+    with STATUS_LOCK:
+        current_card_status = status_data
+        LAST_READ_TIME = time.time()
+    sse_queue.put("read_complete")
+
+    print(
+        f"Gränssnittet uppdateras till status: "
+        f"{status_data.get('message', 'Okänd status')}. ID: {card_id_str}"
+    )
 
 
 def card_reader_thread():
@@ -580,19 +589,18 @@ def card_reader_thread():
                             
                             print(f"VARNING: Kort-ID ogiltigt. ID: {processed_id}. Ursprung: {raw_id}. Ignoreras.")
 
-                            current_card_status = {
-                                "status": "INVALID_FORMAT",
-                                "message": msg,
-                                "secondary_message": secondary,
-                                "status_color": "orange",
-                                "color_code": "#FF9800",
-                                "card_number_dec": processed_id,
-                                "member_name": "N/A",
-                                "expiry_date": "N/A"
-                            }
-                            
-                            # SSE LOGIK: Signalera till webben att läsningen är klar (även om den misslyckades)
-                            LAST_READ_TIME = time.time()
+                            with STATUS_LOCK:
+                                current_card_status = {
+                                    "status": "INVALID_FORMAT",
+                                    "message": msg,
+                                    "secondary_message": secondary,
+                                    "status_color": "orange",
+                                    "color_code": "#FF9800",
+                                    "card_number_dec": processed_id,
+                                    "member_name": "N/A",
+                                    "expiry_date": "N/A",
+                                }
+                                LAST_READ_TIME = time.time()
                             sse_queue.put("read_complete")
 
                             
@@ -611,25 +619,17 @@ def card_reader_thread():
 
 # --- FLASK WEBSERVER ROUTES ---
 
-# NY SSE-RUTT
 @app.route('/stream')
 def stream():
     def event_stream():
-        global sse_queue
         while True:
-            # Väntar på att ett meddelande ska dyka upp i kön (blockerande)
             try:
-                # 20s timeout som heartbeat
                 message = sse_queue.get(timeout=20)
-                
-                # Skicka händelsen till klienten
                 if message == "start_read":
                     yield 'data: start\n\n'
                 elif message == "read_complete":
                     yield 'data: complete\n\n'
-                
             except queue.Empty:
-                # Skicka en kommentar för att hålla anslutningen vid liv
                 yield ':\n\n'
             except GeneratorExit:
                 break
@@ -637,47 +637,58 @@ def stream():
                 print(f"SSE FEL: {e}")
                 break
 
-    # Konfigurera HTTP-huvuden för Server-Sent Events
     return app.response_class(event_stream(), mimetype='text/event-stream')
 
 
-@app.route('/')
-def index():
-    """
-    Huvudsidan för kortläsaren. Rendrerar index.html.
-    Hantera återställning av statusen till viloläge (None) efter timeout.
-    """
-    global current_card_status, LAST_READ_TIME, REST_TIMEOUT_SECONDS
-    global IS_CLIPPING_ACTIVE
-    
-    # KORRIGERING: Timeouta ENDAST om klippning INTE pågår OCH tiden har löpt ut
-    if current_card_status and (time.time() - LAST_READ_TIME) >= REST_TIMEOUT_SECONDS and not IS_CLIPPING_ACTIVE:
-        print("Gränssnitt: Status timeout uppnådd. Återgår till viloläge.")
-        current_card_status = None
-    
-    return render_template('index.html',
-        status_data=current_card_status,
-        REST_TIMEOUT_SECONDS=REST_TIMEOUT_SECONDS)
+@app.route('/healthz')
+def healthz():
+    return jsonify({
+        "ok": True,
+        "members_cached": len(CARD_CACHE),
+        "tencards_cached": len(TENCARD_CACHE),
+        "clipping": IS_CLIPPING_ACTIVE,
+    })
 
-@app.route('/statistik')
-def statistik():
-    """Rutt för statistik (förutsätter att templates/statistik.html finns)"""
-    try:
-        return render_template('statistik.html')
-    except Exception as e:
-        return f"FEL: Kunde inte hitta 'templates/statistik.html' eller fel vid rendering: {e}", 500
-    
+
+@app.route('/')
+def kiosk():
+    """Hela kioskskärmen: rotator + incheckning."""
+    kiosk_cfg = config.get("KIOSK") or {}
+    slides = kiosk_cfg.get("slides") or []
+    checkin_path = kiosk_cfg.get("checkinPath", "/checkin")
+    return render_template(
+        'kiosk.html',
+        slides=slides,
+        checkin_path=checkin_path,
+    )
+
+
+@app.route('/checkin')
+def checkin():
+    """Incheckningsytan (används fristående eller som iframe i kiosken)."""
+    global current_card_status
+
+    with STATUS_LOCK:
+        if (
+            current_card_status
+            and (time.time() - LAST_READ_TIME) >= REST_TIMEOUT_SECONDS
+            and not IS_CLIPPING_ACTIVE
+        ):
+            print("Gränssnitt: Status timeout uppnådd. Återgår till viloläge.")
+            current_card_status = None
+        status_snapshot = current_card_status
+
+    return render_template(
+        'checkin.html',
+        status_data=status_snapshot,
+        REST_TIMEOUT_SECONDS=REST_TIMEOUT_SECONDS,
+    )
+
+
 # --- START ---
 
 if __name__ == '__main__':
-    # Starta bakgrundstrådar
-    updater_thread = threading.Thread(target=cache_updater_thread, daemon=True)
-    updater_thread.start()
-    
-    reader_thread = threading.Thread(target=card_reader_thread, daemon=True)
-    reader_thread.start()
-    
-    # Starta Flask-webbservern
+    start_background_threads()
     try:
         app.run(host='0.0.0.0', port=8081, debug=False)
     except KeyboardInterrupt:

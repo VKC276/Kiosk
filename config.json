@@ -1,13 +1,28 @@
 {
-    "READER_DEVICE": "/dev/input/event0",
-    "DATA_URL": "https://script.google.com/macros/s/AKfycbywl9-WmEHvlPDJndkzkRcZWgqQWiMKxX8AJEZ59qCmw_BdE11CGQ6hlRi-kYZmSL8Hug/exec",
-    "LOG_URL": "https://script.google.com/macros/s/AKfycbwiHoUbNl5TvyyKaeYL1648jsy5RqEvNN7btZNAE83kUQwkm7XCCxr5KOymwFP297yn/exec",
-    
-    "TEN_VISIT_DATA_URL": "https://script.google.com/macros/s/AKfycbxu3XPnensff2x5Q82F4J5fAXYKfRvGSW0BGWCKXacgvd41WlUzCKs2QSyzqyki79EZ-Q/exec",
-    "GAS_UPDATE_URL_BASE": "https://script.google.com/macros/s/AKfycbzC1vXZS-qm8OnqNi0wePeJLetTkx92snjCazRDm6cNyKMg9j3pFnaLOO4nWLCOb_fQQQ/exec",
-
-    "CARD_PROCESSING": {
-        "FORMAT": "HEX10", 
-        "BYTE_ORDER": "REVERSED"
-    }
+  "READER_DEVICE": "/dev/input/event0",
+  "DATA_URL": "https://script.google.com/macros/s/AKfycbywl9-WmEHvlPDJndkzkRcZWgqQWiMKxX8AJEZ59qCmw_BdE11CGQ6hlRi-kYZmSL8Hug/exec",
+  "LOG_URL": "https://script.google.com/macros/s/AKfycbwiHoUbNl5TvyyKaeYL1648jsy5RqEvNN7btZNAE83kUQwkm7XCCxr5KOymwFP297yn/exec",
+  "TEN_VISIT_DATA_URL": "https://script.google.com/macros/s/AKfycbxu3XPnensff2x5Q82F4J5fAXYKfRvGSW0BGWCKXacgvd41WlUzCKs2QSyzqyki79EZ-Q/exec",
+  "GAS_UPDATE_URL_BASE": "https://script.google.com/macros/s/AKfycbzC1vXZS-qm8OnqNi0wePeJLetTkx92snjCazRDm6cNyKMg9j3pFnaLOO4nWLCOb_fQQQ/exec",
+  "CARD_PROCESSING": {
+    "FORMAT": "HEX10",
+    "BYTE_ORDER": "REVERSED"
+  },
+  "KIOSK": {
+    "checkinPath": "/checkin",
+    "slides": [
+      {
+        "id": "top-sends",
+        "title": "Topp Senders per led",
+        "url": "https://script.google.com/macros/s/AKfycbx7j97ZTc747SpoWU3GF3Kv9d9RLwJiqtHpXRYaYSm1emcExqvUtYyr4A-m9CNJ5ddSxw/exec",
+        "durationMs": 100000
+      },
+      {
+        "id": "charts",
+        "title": "Roterande statistikdiagram",
+        "url": "/static/diagram_rotator.html",
+        "durationMs": 30000
+      }
+    ]
+  }
 }

@@ -158,9 +158,15 @@ setup_permissions() {
 
   if [[ -f "${KIOSK_DIR}/deploy/99-vkc-kiosk-input.rules" ]]; then
     cp "${KIOSK_DIR}/deploy/99-vkc-kiosk-input.rules" /etc/udev/rules.d/99-vkc-kiosk-input.rules
-    udevadm control --reload-rules || true
-    udevadm trigger || true
   fi
+  # SDZNKJLTD-läsare (ffff:0035): iface 1 kan döda xHCI på Pi
+  if [[ -x "${KIOSK_DIR}/deploy/install-usb-reader-quirk.sh" ]]; then
+    "${KIOSK_DIR}/deploy/install-usb-reader-quirk.sh" || warn "USB-reader quirk installerades inte"
+  elif [[ -f "${KIOSK_DIR}/deploy/99-sdznkj-usb-reader.rules" ]]; then
+    cp "${KIOSK_DIR}/deploy/99-sdznkj-usb-reader.rules" /etc/udev/rules.d/99-sdznkj-usb-reader.rules
+  fi
+  udevadm control --reload-rules || true
+  udevadm trigger || true
 
   chown -R "${KIOSK_USER}:${KIOSK_USER}" "${KIOSK_DIR}"
   chmod +x "${KIOSK_DIR}/install.sh" \

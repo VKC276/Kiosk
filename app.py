@@ -407,20 +407,24 @@ def search_local_cache(card_id, card_cache, tencard_cache):
     ten_card = tencard_cache.get(card_id_str)
     if ten_card:
         klipp_kvar = int(ten_card.get("Antal kvarvarande besök") or 0)
-        member_name = ten_card.get("Namn", "Klippkorts-användare")
+        member_name = str(ten_card.get("Namn") or "").strip()
         
         if klipp_kvar > 0:
             translated_status = 'TENCARD_READY'
             color = 'purple'
             code = '#9C27B0'
             main_message = f"10-kort OK: {klipp_kvar} klipp kvar."
-            secondary_status_text = f"Välkommen {member_name}!"
+            secondary_status_text = f"Välkommen {member_name}!" if member_name else ""
         else:
             translated_status = 'TENCARD_EXHAUSTED'
             color = 'red'
             code = '#F44336'
             main_message = f"10-kort slut (0 klipp kvar)."
-            secondary_status_text = f"Vänligen köp nytt kort, {member_name}."
+            secondary_status_text = (
+                f"Vänligen köp nytt kort, {member_name}."
+                if member_name
+                else "Vänligen köp nytt kort."
+            )
             
         return {
             "type": "TENCARD",

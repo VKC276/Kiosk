@@ -66,6 +66,9 @@ CARD_CFG = cfg_section("CARD_PROCESSING")
 READER_DEVICE = READER_CFG.get("device") or config.get("READER_DEVICE") or "/dev/input/event0"
 READER_NAME_CONTAINS = (READER_CFG.get("nameContains") or "").strip()
 READER_GRAB = bool(READER_CFG.get("grab", True))
+READER_BACKEND = str(READER_CFG.get("backend", "auto")).lower()
+READER_USB_VENDOR = int(str(READER_CFG.get("usbVendor", "0xffff")), 0)
+READER_USB_PRODUCT = int(str(READER_CFG.get("usbProduct", "0x0035")), 0)
 
 SERVER_HOST = SERVER_CFG.get("host", "0.0.0.0")
 SERVER_PORT = int(SERVER_CFG.get("port", 8081))
@@ -128,6 +131,20 @@ def resolve_reader_device():
     return READER_DEVICE or None
 
 
+def _resolve_reader_backend():
+    """auto → usb för kända xHCI-kraschande läsare, annars evdev."""
+    if READER_BACKEND in {"usb", "pyusb"}:
+        return "usb"
+    if READER_BACKEND in {"evdev", "input"}:
+        return "evdev"
+    # auto
+    if READER_USB_VENDOR == 0xFFFF and READER_USB_PRODUCT == 0x0035:
+        return "usb"
+    if READER_CFG.get("usbVendor") or READER_CFG.get("usbProduct"):
+        return "usb"
+    return "evdev"
+
+
 def start_background_threads():
     """Startar cache- och kortläsartrådar exakt en gång per process."""
     global _THREADS_STARTED
@@ -136,8 +153,13 @@ def start_background_threads():
             return
         _THREADS_STARTED = True
         threading.Thread(target=cache_updater_thread, daemon=True).start()
-        threading.Thread(target=card_reader_thread, daemon=True).start()
-        print("Bakgrundstrådar startade (cache + kortläsare).")
+        backend = _resolve_reader_backend()
+        if backend == "usb":
+            threading.Thread(target=usb_card_reader_thread_entry, daemon=True).start()
+            print("Bakgrundstrådar startade (cache + USB/pyusb-kortläsare).")
+        else:
+            threading.Thread(target=card_reader_thread, daemon=True).start()
+            print("Bakgrundstrådar startade (cache + evdev-kortläsare).")
 
 # --- KORTKONVERTERINGSFUNKTION ---
 def convert_card_id(raw_card_id: str) -> str:
@@ -561,9 +583,64 @@ def handle_card_read(card_id):
     )
 
 
+def process_raw_card_id(raw_id: str) -> None:
+    """Gemensam hantering av rått kort-ID från evdev eller USB."""
+    global current_card_status, LAST_READ_TIME
+
+    processed_id = convert_card_id(raw_id)
+    processed_id_len = len(processed_id)
+    is_valid_decimal = (
+        processed_id.isdigit()
+        and MIN_CARD_ID_LENGTH <= processed_id_len <= MAX_CARD_ID_LENGTH
+    )
+
+    if is_valid_decimal:
+        threading.Thread(target=handle_card_read, args=(processed_id,), daemon=True).start()
+        return
+
+    if not processed_id.isdigit():
+        msg = "Fel: Konvertering misslyckades (icke-numeriska tecken kvar)."
+        secondary = f"Kontrollera {CARD_FORMAT} inställning eller kortdata."
+    elif processed_id_len < MIN_CARD_ID_LENGTH or processed_id_len > MAX_CARD_ID_LENGTH:
+        msg = f"Fel: Ogiltig längd ({processed_id_len} siffror)."
+        secondary = f"Kortet ska ha {MIN_CARD_ID_LENGTH}-{MAX_CARD_ID_LENGTH} siffror."
+    else:
+        msg = "Fel: Okänt ID-format efter bearbetning."
+        secondary = f"Rådata: {raw_id}. Konfig: {CARD_FORMAT}/{BYTE_ORDER}."
+
+    print(f"VARNING: Kort-ID ogiltigt. ID: {processed_id}. Ursprung: {raw_id}. Ignoreras.")
+    with STATUS_LOCK:
+        current_card_status = {
+            "status": "INVALID_FORMAT",
+            "message": msg,
+            "secondary_message": secondary,
+            "status_color": "orange",
+            "color_code": "#FF9800",
+            "card_number_dec": processed_id,
+            "member_name": "N/A",
+            "expiry_date": "N/A",
+        }
+        LAST_READ_TIME = time.time()
+    sse_queue.put("read_complete")
+
+
+def usb_card_reader_thread_entry():
+    """PyUSB-backend — undviker usbhid/iface1 som dödar xHCI."""
+    global ACTIVE_READER_DEVICE
+    from reader_usb import usb_card_reader_thread
+
+    ACTIVE_READER_DEVICE = f"usb:{READER_USB_VENDOR:#06x}:{READER_USB_PRODUCT:#06x}"
+    usb_card_reader_thread(
+        vendor_id=READER_USB_VENDOR,
+        product_id=READER_USB_PRODUCT,
+        on_raw_id=process_raw_card_id,
+        should_run=lambda: SHOULD_RUN,
+    )
+
+
 def card_reader_thread():
     """Huvudtråd som konstant lyssnar på MIFARE-läsaren via evdev."""
-    global current_card_status, LAST_READ_TIME, ACTIVE_READER_DEVICE
+    global ACTIVE_READER_DEVICE
 
     device_path = resolve_reader_device()
     if not device_path:
@@ -595,72 +672,21 @@ def card_reader_thread():
         return
 
     print("DEBUG LOOP: Går in i read_loop().")
-
     key_events = []
-    
+
     try:
         for event in dev.read_loop():
             if event.type == ecodes.EV_KEY and event.value == 1:
-                
-                event_code = event.code
-                
-                if event_code in CARD_KEY_CODES:
-                    
-                    # NY SSE LOGIK: Signalera till webben att läsningen har börjat
+                if event.code in CARD_KEY_CODES:
                     if not key_events:
                         sse_queue.put("start_read")
-
                     key_events.append(event)
-                    
-                elif event_code == ecodes.KEY_ENTER or event_code == ecodes.KEY_KPENTER:
+                elif event.code in (ecodes.KEY_ENTER, ecodes.KEY_KPENTER):
                     if key_events:
-                        
                         raw_id = parse_card_id(key_events)
                         key_events = []
-                        
-                        # 1. Konvertera/bearbeta rådata
-                        processed_id = convert_card_id(raw_id)
-                        
-                        processed_id_len = len(processed_id)
-                        
-                        # 2. Huvudvalidering: Måste vara siffror OCH inom längdgränserna
-                        is_valid_decimal = processed_id.isdigit() and MIN_CARD_ID_LENGTH <= processed_id_len <= MAX_CARD_ID_LENGTH
-                        
-                        if is_valid_decimal:
-                            
-                            # Starta valideringstråden
-                            threading.Thread(target=handle_card_read, args=(processed_id,), daemon=True).start()
-                            
-                        else:
-                            
-                            # --- FELHANTERING ---
-                            if not processed_id.isdigit():
-                                msg = "Fel: Konvertering misslyckades (icke-numeriska tecken kvar)."
-                                secondary = f"Kontrollera {CARD_FORMAT} inställning eller kortdata."
-                            elif processed_id_len < MIN_CARD_ID_LENGTH or processed_id_len > MAX_CARD_ID_LENGTH:
-                                msg = f"Fel: Ogiltig längd ({processed_id_len} siffror)."
-                                secondary = f"Kortet ska ha {MIN_CARD_ID_LENGTH}-{MAX_CARD_ID_LENGTH} siffror."
-                            else:
-                                msg = "Fel: Okänt ID-format efter bearbetning."
-                                secondary = f"Rådata: {raw_id}. Konfig: {CARD_FORMAT}/{BYTE_ORDER}."
-                            
-                            print(f"VARNING: Kort-ID ogiltigt. ID: {processed_id}. Ursprung: {raw_id}. Ignoreras.")
+                        process_raw_card_id(raw_id)
 
-                            with STATUS_LOCK:
-                                current_card_status = {
-                                    "status": "INVALID_FORMAT",
-                                    "message": msg,
-                                    "secondary_message": secondary,
-                                    "status_color": "orange",
-                                    "color_code": "#FF9800",
-                                    "card_number_dec": processed_id,
-                                    "member_name": "N/A",
-                                    "expiry_date": "N/A",
-                                }
-                                LAST_READ_TIME = time.time()
-                            sse_queue.put("read_complete")
-
-                            
     except Exception as e:
         print(f"KRITISKT FEL: Ett oväntat fel uppstod i lästråden: {e}")
 

@@ -1,42 +1,69 @@
 #!/usr/bin/env bash
-# Installerar udev-quirk + snabb guard-tjänst för SDZNKJLTD USB Reader (ffff:0035).
+# SDZNKJLTD USB Reader (ffff:0035) på Raspberry Pi:
+# - Stoppa usbhid från att binda enheten (iface 1 dödar xHCI)
+# - Appen läser iface 0 via PyUSB (READER.backend = "usb")
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-RULE_SRC="${SCRIPT_DIR}/99-sdznkj-usb-reader.rules"
-RULE_DST="/etc/udev/rules.d/99-sdznkj-usb-reader.rules"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Kör som root: sudo $0" >&2
   exit 1
 fi
 
-rm -f /etc/udev/rules.d/99-sdznkj-usb-reader.rules
-cp "${RULE_SRC}" "${RULE_DST}"
-chmod 644 "${RULE_DST}"
-chmod +x "${SCRIPT_DIR}/usb-reader-iface1-guard.sh"
+install -d /etc/modprobe.d
+cp "${SCRIPT_DIR}/modprobe.d/usbhid-sdznkj.conf" /etc/modprobe.d/usbhid-sdznkj.conf
+chmod 644 /etc/modprobe.d/usbhid-sdznkj.conf
 
-# Rendera och installera guard-tjänst
-sed -e "s|__KIOSK_DIR__|${ROOT_DIR}|g" \
-  "${SCRIPT_DIR}/vkc-usb-reader-guard.service.in" \
-  > /etc/systemd/system/vkc-usb-reader-guard.service
+cp "${SCRIPT_DIR}/99-sdznkj-usb-permissions.rules" /etc/udev/rules.d/99-sdznkj-usb-permissions.rules
+chmod 644 /etc/udev/rules.d/99-sdznkj-usb-permissions.rules
+
+# plugdev för pyusb-behörighet
+getent group plugdev >/dev/null || groupadd plugdev
+KIOSK_USER="$(stat -c '%U' "${ROOT_DIR}" 2>/dev/null || echo vkc)"
+if id -u "${KIOSK_USER}" >/dev/null 2>&1; then
+  usermod -aG plugdev "${KIOSK_USER}" || true
+fi
+
+# Gamla ineffektiva unbind-regler/guard behövs inte med usbhid IGNORE
+rm -f /etc/udev/rules.d/99-sdznkj-usb-reader.rules
+systemctl disable --now vkc-usb-reader-guard.service 2>/dev/null || true
+rm -f /etc/systemd/system/vkc-usb-reader-guard.service
 
 udevadm control --reload-rules
-udevadm trigger --subsystem-match=usb --action=add || true
+udevadm trigger --subsystem-match=usb || true
+systemctl daemon-reload || true
 
-systemctl daemon-reload
-systemctl enable --now vkc-usb-reader-guard.service
+# Säkerställ pyusb i venv
+if [[ -x "${ROOT_DIR}/venv/bin/pip" ]]; then
+  sudo -u "${KIOSK_USER}" "${ROOT_DIR}/venv/bin/pip" install -q 'pyusb>=1.2,<2' || true
+fi
+
+# Sätt backend=usb i config om möjligt (jq eller python)
+if [[ -f "${ROOT_DIR}/config.json" ]]; then
+  sudo -u "${KIOSK_USER}" python3 - <<PY
+import json
+from pathlib import Path
+p = Path("${ROOT_DIR}/config.json")
+cfg = json.loads(p.read_text(encoding="utf-8"))
+reader = cfg.setdefault("READER", {})
+reader["backend"] = "usb"
+reader["usbVendor"] = "0xffff"
+reader["usbProduct"] = "0x0035"
+reader["nameContains"] = reader.get("nameContains") or "USB Reader"
+p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print("config.json: READER.backend=usb")
+PY
+fi
 
 echo
-echo "Installerat:"
-echo "  ${RULE_DST}"
-echo "  vkc-usb-reader-guard.service (kör nu)"
+echo "Installerat usbhid-quirk + PyUSB-behörighet."
 echo
-echo "Nästa steg:"
-echo "  1) sudo reboot          # viktigt om USB redan dött (HC died)"
-echo "  2) Efter boot: sätt i läsaren"
-echo "  3) sudo dmesg -T | tail -40"
-echo "     — ska visa Keyboard utan 'HC died'"
-echo "  4) vkc-kiosk devices"
-echo "  5) Sätt nameContains till \"USB Reader\" i config.json"
+echo "VIKTIGT: reboot krävs så usbhid laddas om med quirk:"
+echo "  sudo reboot"
+echo
+echo "Efter reboot ska dmesg visa enheten UTAN hid-generic/Keyboard"
+echo "(ingen 'HC died'). Appen läser via PyUSB."
+echo "  sudo systemctl restart vkc-kiosk"
+echo "  journalctl -u vkc-kiosk -f"

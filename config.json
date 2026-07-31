@@ -1,7 +1,10 @@
 {
   "READER": {
+    "backend": "usb",
+    "usbVendor": "0xffff",
+    "usbProduct": "0x0035",
     "device": "/dev/input/event0",
-    "nameContains": "",
+    "nameContains": "USB Reader",
     "grab": true
   },
   "SERVER": {

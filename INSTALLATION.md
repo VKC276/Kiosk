@@ -157,6 +157,18 @@ pkill -f vkc-kiosk-chromium || true
 cd ~/vkc-kiosk && git pull && sudo SKIP_APT=1 ./install.sh
 ```
 
+**USB-läsare syns men `HC died` efter ~10 s (SDZNKJLTD ffff:0035)**  
+Interface 0 är tangentbordet; interface 1 kraschar xHCI. Installera quirk:
+
+```bash
+cd ~/vkc-kiosk
+git pull
+sudo ./deploy/install-usb-reader-quirk.sh
+```
+
+Dra ur läsaren, sätt i igen. `dmesg` ska visa Keyboard **utan** `HC died`.  
+Sätt sedan `"nameContains": "USB Reader"` i `config.json`.
+
 **Pi Connect**
 Chromium körs i vanlig fullskärm (`--start-fullscreen`), inte hårdlåst kiosk. Du kan lämna med F11 eller Alt+Tab.
 

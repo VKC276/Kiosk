@@ -78,10 +78,13 @@ SDZNKJLTD skickar ofta nollpaddad hex med omvänd nibble-ordning. Exempel: rå `
   "FORMAT": "HEX10",
   "BYTE_ORDER": "REVERSED",
   "NIBBLE_ORDER": "REVERSED",
+  "hexUidChars": 8,
   "minIdLength": 5,
   "maxIdLength": 10
 }
 ```
+
+`hexUidChars` är UID-längden i hex-tecken (4-byte MIFARE = 8). Ledande `00` från läsarpadding tas bort bara så länge strängen är längre än så — äkta nollor i UID (`00000001`) behålls.
 
 ### Slides (övre skärmytan)
 

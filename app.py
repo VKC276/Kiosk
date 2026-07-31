@@ -86,6 +86,8 @@ CARD_FORMAT = str(CARD_CFG.get("FORMAT", "DEC10")).upper()
 BYTE_ORDER = str(CARD_CFG.get("BYTE_ORDER", "NORMAL")).upper()
 # Vissa USB-läsare (t.ex. SDZNKJLTD) skickar hex med omvänd nibble-ordning per byte.
 NIBBLE_ORDER = str(CARD_CFG.get("NIBBLE_ORDER", "NORMAL")).upper()
+# Antal hex-tecken i själva UID (4-byte MIFARE = 8). Läsaren kan padda med "00" framför.
+HEX_UID_CHARS = int(CARD_CFG.get("hexUidChars", 8))
 MIN_CARD_ID_LENGTH = int(CARD_CFG.get("minIdLength", 5))
 MAX_CARD_ID_LENGTH = int(CARD_CFG.get("maxIdLength", 10))
 DECIMAL_PAD_LENGTH = int(CARD_CFG.get("decimalPadLength", 10))
@@ -175,12 +177,46 @@ def start_background_threads():
             print("Bakgrundstrådar startade (cache + evdev-kortläsare).")
 
 # --- KORTKONVERTERINGSFUNKTION ---
+def _normalize_hex_uid(hex_id: str, uid_chars: int) -> str:
+    """Behåll äkta ledande 00 i UID; ta bara bort läsarpadding framför.
+
+    Exempel med uid_chars=8:
+      '00000055984065' → '55984065'   (padding)
+      '00000001'       → '00000001'   (äkta nollor i 4-byte UID)
+      '00000000000001' → '00000001'   (padding ner till 8 tecken)
+    """
+    hex_id = "".join(c for c in hex_id.upper() if c in "0123456789ABCDEF")
+    if not hex_id:
+        return "0" * max(2, uid_chars if uid_chars > 0 else 2)
+
+    if len(hex_id) % 2:
+        hex_id = "0" + hex_id
+
+    target = uid_chars if uid_chars > 0 else len(hex_id)
+    if target % 2:
+        target += 1
+
+    # Ta bort endast hela "00"-bytes så länge strängen är längre än UID.
+    while len(hex_id) > target and hex_id.startswith("00"):
+        hex_id = hex_id[2:]
+
+    # Om läsaren skickar mer än UID utan enbart noll-padding: högerställ.
+    if len(hex_id) > target:
+        hex_id = hex_id[-target:]
+
+    # Kortare än förväntat (ovanligt): vänsterpadda med 00 så reverse blir stabil.
+    if len(hex_id) < target:
+        hex_id = hex_id.zfill(target)
+
+    return hex_id
+
+
 def convert_card_id(raw_card_id: str) -> str:
     """
     Konverterar kort-ID baserat på FORMAT / BYTE_ORDER / NIBBLE_ORDER i config.
 
     HEX10-exempel (SDZNKJLTD): rå '00000055984065'
-      → strip padding → '55984065'
+      → padding bort, UID 8 tecken → '55984065'
       → NIBBLE_ORDER=REVERSED → '55890456'
       → BYTE_ORDER=REVERSED → '56048955'
       → decimal '1443137877'
@@ -194,14 +230,7 @@ def convert_card_id(raw_card_id: str) -> str:
         return card_id
 
     if CARD_FORMAT == "HEX10":
-        hex_id = "".join(c for c in card_id if c in "0123456789ABCDEF")
-        # Läsare paddar ofta med ledande nollor (t.ex. 14 tecken) — de får
-        # inte vara med i byte-reverse, annars blir talet 16+ siffror.
-        hex_id = hex_id.lstrip("0")
-        if not hex_id:
-            hex_id = "0"
-        if len(hex_id) % 2:
-            hex_id = "0" + hex_id
+        hex_id = _normalize_hex_uid(card_id, HEX_UID_CHARS)
 
         # 1) Nibble-ordning inom varje byte (59 → 95, osv.)
         if NIBBLE_ORDER in {"REVERSED", "SWAP", "SWAPPED"}:

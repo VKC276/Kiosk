@@ -11,12 +11,13 @@ Group=__KIOSK_USER__
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/__KIOSK_USER__/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/__KIOSK_UID__
-ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do curl -fsS http://127.0.0.1:__SERVER_PORT__/healthz >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+# --max-time krävs: utan den kan curl hänga om API-workern blockeras (t.ex. PyUSB).
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 90); do curl -fsS --max-time 2 http://127.0.0.1:__SERVER_PORT__/healthz >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
 ExecStart=__KIOSK_DIR__/deploy/start-browser.sh
 # Inte Restart=always — Chromium kan lämna processer kvar; always öppnar då nya flikar i loop.
 Restart=on-failure
 RestartSec=10
-TimeoutStartSec=90
+TimeoutStartSec=120
 StandardOutput=journal
 StandardError=journal
 

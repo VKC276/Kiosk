@@ -13,9 +13,12 @@ Group=__KIOSK_USER__
 WorkingDirectory=__KIOSK_DIR__
 Environment=PATH=__KIOSK_DIR__/venv/bin:/usr/local/bin:/usr/bin
 ExecStartPre=/usr/bin/sleep 3
+# gthread (inte gevent): PyUSB/libusb i bakgrundstråd kan annars blockera hela
+# gevent-hubben så /healthz hänger och Chromium aldrig startar.
 ExecStart=__KIOSK_DIR__/venv/bin/gunicorn \
   -w 1 \
-  -k gevent \
+  -k gthread \
+  --threads 4 \
   --timeout 0 \
   -b __SERVER_HOST__:__SERVER_PORT__ \
   wsgi:app

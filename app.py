@@ -145,6 +145,17 @@ def _resolve_reader_backend():
     return "evdev"
 
 
+def _deferred_usb_reader_start():
+    """Vänta kort så /healthz kan svara innan libusb rör USB-bussen."""
+    time.sleep(2.0)
+    if not SHOULD_RUN:
+        return
+    try:
+        usb_card_reader_thread_entry()
+    except Exception as exc:
+        print(f"USB-kortläsartråd dog: {exc}")
+
+
 def start_background_threads():
     """Startar cache- och kortläsartrådar exakt en gång per process."""
     global _THREADS_STARTED
@@ -155,8 +166,8 @@ def start_background_threads():
         threading.Thread(target=cache_updater_thread, daemon=True).start()
         backend = _resolve_reader_backend()
         if backend == "usb":
-            threading.Thread(target=usb_card_reader_thread_entry, daemon=True).start()
-            print("Bakgrundstrådar startade (cache + USB/pyusb-kortläsare).")
+            threading.Thread(target=_deferred_usb_reader_start, daemon=True).start()
+            print("Bakgrundstrådar startade (cache + USB/pyusb-kortläsare, deferred).")
         else:
             threading.Thread(target=card_reader_thread, daemon=True).start()
             print("Bakgrundstrådar startade (cache + evdev-kortläsare).")

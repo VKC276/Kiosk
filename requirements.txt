@@ -1,5 +1,6 @@
 flask>=3.0,<4
 requests>=2.31,<3
 evdev>=1.7,<2
+pyusb>=1.2,<2
 gunicorn>=22,<24
 gevent>=24,<26

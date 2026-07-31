@@ -157,29 +157,32 @@ pkill -f vkc-kiosk-chromium || true
 cd ~/vkc-kiosk && git pull && sudo SKIP_APT=1 ./install.sh
 ```
 
-**USB-läsare syns men `HC died` efter ~10 s (SDZNKJLTD ffff:0035)**  
-Interface 0 är tangentbordet; interface 1 kraschar hela USB-bussen.  
-Udev ensamt hinner ofta inte — vi kör också en snabb guard-tjänst.
+**USB-läsare + `HC died` efter ~10 s (SDZNKJLTD ffff:0035)**  
+Kernel-`usbhid` på interface 1 dödar xHCI (även via USB2-hub).  
+Lösning: ignorera enheten i `usbhid` och läs **bara iface 0 via PyUSB**.
 
 ```bash
 cd ~/vkc-kiosk
 git pull
+./venv/bin/pip install -r requirements.txt
 sudo ./deploy/install-usb-reader-quirk.sh
 sudo reboot
 ```
 
-Efter reboot: sätt i läsaren och kolla:
+Efter reboot (gärna via hub):
 
 ```bash
-sudo dmesg -T | tail -40
-systemctl status vkc-usb-reader-guard
-vkc-kiosk devices
+sudo dmesg -T | tail -30
+# Enheten syns, men INTE som "hid-generic ... Keyboard"
+# och INGEN "HC died"
+sudo systemctl restart vkc-kiosk
+journalctl -u vkc-kiosk -f
 ```
 
-`dmesg` ska visa Keyboard **utan** `HC died`.  
-Sätt `"nameContains": "USB Reader"` i `config.json` och `vkc-kiosk restart`.
+`config.json` ska ha `"READER": { "backend": "usb", "usbVendor": "0xffff", "usbProduct": "0x0035" }`  
+(sätts automatiskt av quirk-scriptet).
 
-Om USB redan dött (inga nya rader i `dmesg` vid inkoppling) → **reboot** först.
+Om USB redan dött (inga nya rader i `dmesg`) → **reboot** först.
 
 **Pi Connect**
 Chromium körs i vanlig fullskärm (`--start-fullscreen`), inte hårdlåst kiosk. Du kan lämna med F11 eller Alt+Tab.

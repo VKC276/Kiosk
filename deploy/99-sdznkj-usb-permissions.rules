@@ -1,0 +1,2 @@
+# Ge kiosk-användaren tillgång till SDZNKJLTD-läsaren via PyUSB (iface 0).
+SUBSYSTEM=="usb", ATTR{idVendor}=="ffff", ATTR{idProduct}=="0035", MODE="0660", GROUP="plugdev", TAG+="uaccess"

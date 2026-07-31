@@ -1,0 +1,16 @@
+[Unit]
+Description=VKC USB reader guard (block SDZNKJLTD iface 1 before xHCI crash)
+Documentation=https://github.com/VKC276/Kiosk
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=__KIOSK_DIR__/deploy/usb-reader-iface1-guard.sh
+Restart=always
+RestartSec=1
+Nice=-5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+# SDZNKJLTD USB Reader (ffff:0035)
+# Interface 0 = HID-tangentbord (kortblipp) — ska behållas.
+# Interface 1 saknar interrupt-endpoint och kan döda xHCI på Raspberry Pi.
+#
+# Sätt driver_override INNAN usbhid binder, och avbinda om det redan skett.
+
+ACTION=="add", SUBSYSTEM=="usb", ATTR{bInterfaceNumber}=="1", ATTRS{idVendor}=="ffff", ATTRS{idProduct}=="0035", \
+  RUN+="/bin/sh -c 'echo -n do-not-bind > /sys$devpath/driver_override; \
+    if [ -e /sys$devpath/driver ]; then basename $(readlink -f /sys$devpath) > /sys/bus/usb/drivers/usbhid/unbind 2>/dev/null || true; fi'"
+
+# Extra: om hid-enheten redan skapats för iface 1, försök ta bort den snabbt
+ACTION=="add", SUBSYSTEM=="hid", ATTRS{idVendor}=="ffff", ATTRS{idProduct}=="0035", ATTRS{bInterfaceNumber}=="1", \
+  RUN+="/bin/sh -c 'echo -n %k > /sys/bus/hid/drivers/hid-generic/unbind 2>/dev/null || true'"

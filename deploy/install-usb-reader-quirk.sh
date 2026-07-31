@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# SDZNKJLTD USB Reader (ffff:0035) på Raspberry Pi.
-# Stoppar usbhid helt via usbcore.authorized_default=0 + udev.
+# YAROGNTEC / SDZNKJLTD USB Reader (ffff:0035) på Raspberry Pi.
+# Stoppar usbhid via usbcore.authorized_default=0 + udev + quirks.
 # Appen läser iface 0 via PyUSB.
+#
+# Föredragen entrypoint för användare:
+#   sudo ./scripts/setup-yarogntec-reader.sh
+#   sudo vkc-kiosk setup-reader
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

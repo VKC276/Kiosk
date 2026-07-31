@@ -8,6 +8,8 @@ import requests
 from evdev import InputDevice, ecodes, list_devices
 from flask import Flask, jsonify, render_template
 
+from card_convert import convert_card_id as convert_card_id_with_options
+
 # --- KONFIGURATION OCH GLOBALA VARIABLER ---
 
 current_card_status = None
@@ -177,83 +179,16 @@ def start_background_threads():
             print("Bakgrundstrådar startade (cache + evdev-kortläsare).")
 
 # --- KORTKONVERTERINGSFUNKTION ---
-def _normalize_hex_uid(hex_id: str, uid_chars: int) -> str:
-    """Behåll äkta ledande 00 i UID; ta bara bort läsarpadding framför.
-
-    Exempel med uid_chars=8:
-      '00000055984065' → '55984065'   (padding)
-      '00000001'       → '00000001'   (äkta nollor i 4-byte UID)
-      '00000000000001' → '00000001'   (padding ner till 8 tecken)
-    """
-    hex_id = "".join(c for c in hex_id.upper() if c in "0123456789ABCDEF")
-    if not hex_id:
-        return "0" * max(2, uid_chars if uid_chars > 0 else 2)
-
-    if len(hex_id) % 2:
-        hex_id = "0" + hex_id
-
-    target = uid_chars if uid_chars > 0 else len(hex_id)
-    if target % 2:
-        target += 1
-
-    # Ta bort endast hela "00"-bytes så länge strängen är längre än UID.
-    while len(hex_id) > target and hex_id.startswith("00"):
-        hex_id = hex_id[2:]
-
-    # Om läsaren skickar mer än UID utan enbart noll-padding: högerställ.
-    if len(hex_id) > target:
-        hex_id = hex_id[-target:]
-
-    # Kortare än förväntat (ovanligt): vänsterpadda med 00 så reverse blir stabil.
-    if len(hex_id) < target:
-        hex_id = hex_id.zfill(target)
-
-    return hex_id
-
-
 def convert_card_id(raw_card_id: str) -> str:
-    """
-    Konverterar kort-ID baserat på FORMAT / BYTE_ORDER / NIBBLE_ORDER i config.
-
-    HEX10-exempel (SDZNKJLTD): rå '00000055984065'
-      → padding bort, UID 8 tecken → '55984065'
-      → NIBBLE_ORDER=REVERSED → '55890456'
-      → BYTE_ORDER=REVERSED → '56048955'
-      → decimal '1443137877'
-    """
-    card_id = raw_card_id.strip().replace(":", "").replace("-", "").upper()
-
-    if CARD_FORMAT == "DEC10":
-        # Nollfyller ID:n som trunkerats av läsaren
-        if card_id.isdigit() and len(card_id) < DECIMAL_PAD_LENGTH:
-            card_id = card_id.zfill(DECIMAL_PAD_LENGTH)
-        return card_id
-
-    if CARD_FORMAT == "HEX10":
-        hex_id = _normalize_hex_uid(card_id, HEX_UID_CHARS)
-
-        # 1) Nibble-ordning inom varje byte (59 → 95, osv.)
-        if NIBBLE_ORDER in {"REVERSED", "SWAP", "SWAPPED"}:
-            hex_id = "".join(hex_id[i + 1] + hex_id[i] for i in range(0, len(hex_id), 2))
-
-        # 2) Byteordning
-        if BYTE_ORDER == "REVERSED":
-            bytes_list = [hex_id[i:i + 2] for i in range(0, len(hex_id), 2)]
-            bytes_list.reverse()
-            hex_id = "".join(bytes_list)
-
-        # 3) Hex → decimal
-        try:
-            return str(int(hex_id, 16))
-        except ValueError:
-            print(
-                f"FEL: Kort-ID '{raw_card_id}' kunde inte konverteras från HEX10. "
-                "Kontrollera om inmatningen är ren hex."
-            )
-            return raw_card_id
-
-    # Standard: Returnera rådata om formatet inte matchar konfigurerat
-    return raw_card_id
+    """Konvertera rått kort-ID enligt CARD_PROCESSING i config."""
+    return convert_card_id_with_options(
+        raw_card_id,
+        card_format=CARD_FORMAT,
+        byte_order=BYTE_ORDER,
+        nibble_order=NIBBLE_ORDER,
+        hex_uid_chars=HEX_UID_CHARS,
+        decimal_pad_length=DECIMAL_PAD_LENGTH,
+    )
 
 # --- LOGGNING (SEPARAT TRÅD) ---
 def log_card_read_task(card_id, log_url):

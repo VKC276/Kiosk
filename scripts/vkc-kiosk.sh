@@ -10,15 +10,17 @@ usage() {
   cat <<EOF
 Användning: vkc-kiosk <kommando>
 
-  status     Visa tjänstestatus + healthz
-  restart    Starta om API (och browser om den finns)
-  stop       Stoppa tjänster
-  start      Starta tjänster
-  logs       Följ journal-loggar
-  devices    Lista input-enheter (kortläsare)
-  update     git pull + pip + restart
-  config     Öppna config.json i \$EDITOR
-  url        Skriv ut lokal kiosk-URL
+  status              Visa tjänstestatus + healthz
+  restart             Starta om API (och browser om den finns)
+  stop                Stoppa tjänster
+  start               Starta tjänster
+  logs                Följ journal-loggar
+  devices             Lista input-enheter (kortläsare)
+  update              git pull + pip + restart
+  config              Öppna config.json i \$EDITOR
+  url                 Skriv ut lokal kiosk-URL
+  setup-reader        Installera YAROGNTEC/SDZNKJLTD USB-fix (systemändringar)
+  configure-reader    Interaktiv assistent: läsare + kortformat → config.json
 EOF
 }
 
@@ -74,8 +76,25 @@ cmd_devices() {
   echo
 }
 
+python_bin() {
+  if [[ -x "${ROOT_DIR}/venv/bin/python" ]]; then
+    echo "${ROOT_DIR}/venv/bin/python"
+  else
+    echo "python3"
+  fi
+}
+
+cmd_setup_reader() {
+  sudo "${ROOT_DIR}/scripts/setup-yarogntec-reader.sh"
+}
+
+cmd_configure_reader() {
+  exec "$(python_bin)" "${ROOT_DIR}/scripts/configure-card-reader.py" "$@"
+}
+
 main() {
   local cmd="${1:-}"
+  shift || true
   case "${cmd}" in
     status)  cmd_status ;;
     restart) cmd_restart ;;
@@ -87,6 +106,8 @@ main() {
     update)  cmd_update ;;
     config)  "${EDITOR:-nano}" "${ROOT_DIR}/config.json" ;;
     url)     echo "http://127.0.0.1:$(port)/" ;;
+    setup-reader) cmd_setup_reader ;;
+    configure-reader) cmd_configure_reader "$@" ;;
     -h|--help|help|"") usage ;;
     *) echo "Okänt kommando: ${cmd}" >&2; usage; exit 1 ;;
   esac

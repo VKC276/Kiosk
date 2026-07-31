@@ -10,11 +10,23 @@ Kortversion:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/VKC276/Kiosk/main/install.sh | sudo bash
-vkc-kiosk devices
-nano ~/vkc-kiosk/config.json   # sätt READER.device
+vkc-kiosk configure-reader    # välj läsare + kortformat → skriver config.json
 vkc-kiosk restart
-sudo reboot
 ```
+
+### YAROGNTEC / SDZNKJLTD USB-läsare (`ffff:0035`)
+
+Den läsaren kräver extra systemändringar (annars kan Pi USB dö). Kör **separat**:
+
+```bash
+sudo vkc-kiosk setup-reader
+# eller: sudo ./scripts/setup-yarogntec-reader.sh
+sudo reboot
+vkc-kiosk configure-reader
+vkc-kiosk restart
+```
+
+Övriga keyboard-wedge-läsare: bara `configure-reader` — ingen setup-reader.
 
 ## Vad systemet gör
 
@@ -23,12 +35,14 @@ sudo reboot
 - **`/stream`** – SSE vid kortblipp
 - **`/healthz`** – hälsokoll
 - **`/api/input-devices`** – lista tangentbord/input-enheter
+- **`/api/cache/refresh`** – tvinga omhämtning av medlemscache
+- **`/api/cache/lookup/<id>`** – felsök om kort finns i cache
 
-Kortläsaren körs via `evdev`. Medlems- och 10-kort cacheas från Google Apps Script. Innehållssidor byts automatiskt enligt `config.json` (ingen Space behövs). Chromium körs i fullskärm så **Pi Connect** fortfarande fungerar.
+Kortläsaren körs via `evdev` eller PyUSB (`READER.backend`). Medlems- och 10-kort cacheas från Google Apps Script. Chromium körs i fullskärm så **Pi Connect** fungerar.
 
 ## Config
 
-Allt styrs i `config.json`: kortläsare, cache-intervall, timeouts, kortformat, serverport och `KIOSK.slides`. Detaljer i [INSTALLATION.md](INSTALLATION.md).
+Allt styrs i `config.json`. Använd `vkc-kiosk configure-reader` i stället för manuell kortformatsredigering när det går. Detaljer i [INSTALLATION.md](INSTALLATION.md).
 
 ## Drift
 
@@ -37,6 +51,8 @@ vkc-kiosk status
 vkc-kiosk restart
 vkc-kiosk update
 vkc-kiosk logs
+vkc-kiosk setup-reader        # endast YAROGNTEC
+vkc-kiosk configure-reader    # läsare + CARD_PROCESSING
 ```
 
 ## Utveckling lokalt

@@ -43,35 +43,40 @@ sudo KIOSK_USER=vkc KIOSK_DIR=/home/vkc/vkc-kiosk ./install.sh
 sudo SKIP_BROWSER=1 ./install.sh    # bara API, ingen Chromium-tjänst
 ```
 
-## 2. Hitta kortläsaren
+## 2. Kortläsare
+
+### A) YAROGNTEC / SDZNKJLTD (`ffff:0035`) — kräver systemfix
 
 ```bash
-vkc-kiosk devices
+sudo vkc-kiosk setup-reader
+# samma sak: sudo ./scripts/setup-yarogntec-reader.sh
+sudo reboot
 ```
 
-Notera sökvägen, t.ex. `/dev/input/event3`.
+Scriptet sätter cmdline (`authorized_default` + `usbhid.quirks`), udev, prepare-helper, pyusb och `READER.backend=usb`.
 
-## 3. Justera config
+### B) Alla läsare — konfigurera format mot appen
+
+```bash
+vkc-kiosk configure-reader
+```
+
+Assistenten:
+1. listar USB- och evdev-läsare
+2. låter dig blippa ett kort (eller klistra in rådata)
+3. visar alla FORMAT/BYTE/NIBBLE-kombinationer
+4. sparar vald kombination + läsare till `config.json` (med `.bak`)
+
+Ange gärna det förväntade medlems-ID:t (t.ex. `1443137877`) så markeras matchande rader.
+
+### Manuell config (valfritt)
 
 ```bash
 nano ~/vkc-kiosk/config.json
+# eller: vkc-kiosk config
 ```
 
-Minst detta:
-
-```json
-"READER": {
-  "device": "/dev/input/event3",
-  "nameContains": "",
-  "grab": true
-}
-```
-
-Tips: om `event*`-numret ändras vid omstart kan du i stället sätta `nameContains` till en unik del av enhetsnamnet (syns i `vkc-kiosk devices`).
-
-### Kort-ID (CARD_PROCESSING)
-
-SDZNKJLTD skickar ofta nollpaddad hex med omvänd nibble-ordning. Exempel: rå `00000055984065` → `1443137877` med:
+YAROGNTEC-rekommendation för `CARD_PROCESSING`:
 
 ```json
 "CARD_PROCESSING": {
@@ -84,7 +89,7 @@ SDZNKJLTD skickar ofta nollpaddad hex med omvänd nibble-ordning. Exempel: rå `
 }
 ```
 
-`hexUidChars` är UID-längden i hex-tecken (4-byte MIFARE = 8). Ledande `00` från läsarpadding tas bort bara så länge strängen är längre än så — äkta nollor i UID (`00000001`) behålls.
+## 3. Övrig config
 
 ### Slides (övre skärmytan)
 

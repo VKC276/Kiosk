@@ -94,6 +94,12 @@ echo "  cat /proc/cmdline | tr ' ' '\\n' | grep -E 'authorized_default|usbhid.qu
 echo "  # Båda måste synas (authorized_default=0 är kritisk)"
 echo
 echo "Vid inkoppling:"
-echo "  journalctl -t vkc-kiosk -n 5   # 'SDZNKJLTD reader prepared...'"
-echo "  dmesg: INGEN hid-generic, INGEN usbhid iface 1-fel, INGEN HC died"
+echo "  journalctl -t vkc-kiosk -n 20"
+echo "  # ska innehålla: usbhid unloaded before authorize + reader prepared"
+echo "  dmesg: INGEN usbhid 1-2.x:1.1-fel, INGEN HC died"
 echo "Sedan: sudo systemctl restart vkc-kiosk && journalctl -u vkc-kiosk -f"
+echo
+echo "Om usbhid inte kan unloadas (in use / built-in) och felet kvarstår:"
+echo "  echo 'blacklist usbhid' | sudo tee /etc/modprobe.d/blacklist-usbhid-vkc.conf"
+echo "  sudo reboot"
+echo "  # OBS: USB-tangentbord fungerar då inte (använd Pi Connect)."

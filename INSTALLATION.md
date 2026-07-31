@@ -157,29 +157,32 @@ pkill -f vkc-kiosk-chromium || true
 cd ~/vkc-kiosk && git pull && sudo SKIP_APT=1 ./install.sh
 ```
 
-**USB-läsare + `HC died` efter ~10 s (SDZNKJLTD ffff:0035)**  
-Kernel-`usbhid` på interface 1 dödar xHCI (även via USB2-hub).  
-Lösning: ignorera enheten i `usbhid` och läs **bara iface 0 via PyUSB**.
+**USB-läsare + `HC died` / `couldn't find an input interrupt endpoint` (SDZNKJLTD ffff:0035)**  
+Kernel-`usbhid` på interface 1 krockar med Pi xHCI.  
+Lösning: `authorized_default=0` + prepare-script som **lossar `usbhid` före authorize**, låser iface med `driver_override`, läser **iface 0 via PyUSB**.
 
 ```bash
 cd ~/vkc-kiosk
+# Om config.json blockerar pull: cp config.json /tmp/ && git checkout -- config.json
 git pull
 ./venv/bin/pip install -r requirements.txt
 sudo ./deploy/install-usb-reader-quirk.sh
 sudo reboot
 ```
 
-Efter reboot (gärna via hub):
+Efter reboot (gärna via USB2-hub):
 
 ```bash
-cat /proc/cmdline | tr ' ' '\n' | grep usbhid
+cat /proc/cmdline | tr ' ' '\n' | grep -E 'authorized_default|usbhid.quirks'
+# båda raderna måste synas
 sudo dmesg -w
+journalctl -t vkc-kiosk -n 20
 ```
 
 Förväntat vid inkoppling:
-- Hub + `USB Reader` syns
-- **Ingen** `hid-generic ... Keyboard`
-- **Ingen** `couldn't find an input interrupt endpoint` / `HC died`
+- Hub + `USB Reader` syns (`authorized to connect`)
+- journal: `usbhid unloaded before authorize` + `reader prepared`
+- **Ingen** `usbhid ... couldn't find an input interrupt endpoint` / `HC died`
 
 ```bash
 sudo systemctl restart vkc-kiosk
@@ -189,6 +192,13 @@ journalctl -u vkc-kiosk -f
 
 `config.json`: `"READER": { "backend": "usb", "usbVendor": "0xffff", "usbProduct": "0x0035" }`  
 (sätts av quirk-scriptet). Om USB redan dött → **reboot** först.
+
+Om `usbhid`-unload misslyckas och felet kvarstår (sista utvägen — USB-tangentbord slutar fungera; använd Pi Connect):
+
+```bash
+echo 'blacklist usbhid' | sudo tee /etc/modprobe.d/blacklist-usbhid-vkc.conf
+sudo reboot
+```
 
 **Pi Connect**
 Chromium körs i vanlig fullskärm (`--start-fullscreen`), inte hårdlåst kiosk. Du kan lämna med F11 eller Alt+Tab.

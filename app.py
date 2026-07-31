@@ -84,6 +84,8 @@ SSE_HEARTBEAT_SECONDS = int(TIMEOUTS_CFG.get("sseHeartbeatSeconds", 20))
 
 CARD_FORMAT = str(CARD_CFG.get("FORMAT", "DEC10")).upper()
 BYTE_ORDER = str(CARD_CFG.get("BYTE_ORDER", "NORMAL")).upper()
+# Vissa USB-läsare (t.ex. SDZNKJLTD) skickar hex med omvänd nibble-ordning per byte.
+NIBBLE_ORDER = str(CARD_CFG.get("NIBBLE_ORDER", "NORMAL")).upper()
 MIN_CARD_ID_LENGTH = int(CARD_CFG.get("minIdLength", 5))
 MAX_CARD_ID_LENGTH = int(CARD_CFG.get("maxIdLength", 10))
 DECIMAL_PAD_LENGTH = int(CARD_CFG.get("decimalPadLength", 10))
@@ -175,7 +177,13 @@ def start_background_threads():
 # --- KORTKONVERTERINGSFUNKTION ---
 def convert_card_id(raw_card_id: str) -> str:
     """
-    Konverterar kort-ID baserat på FORMAT och BYTE_ORDER inställningarna från config.
+    Konverterar kort-ID baserat på FORMAT / BYTE_ORDER / NIBBLE_ORDER i config.
+
+    HEX10-exempel (SDZNKJLTD): rå '00000055984065'
+      → strip padding → '55984065'
+      → NIBBLE_ORDER=REVERSED → '55890456'
+      → BYTE_ORDER=REVERSED → '56048955'
+      → decimal '1443137877'
     """
     card_id = raw_card_id.strip().replace(":", "").replace("-", "").upper()
 
@@ -186,24 +194,35 @@ def convert_card_id(raw_card_id: str) -> str:
         return card_id
 
     if CARD_FORMAT == "HEX10":
-        
-        hex_id = card_id
-        
-        # 1. Byteordning
+        hex_id = "".join(c for c in card_id if c in "0123456789ABCDEF")
+        # Läsare paddar ofta med ledande nollor (t.ex. 14 tecken) — de får
+        # inte vara med i byte-reverse, annars blir talet 16+ siffror.
+        hex_id = hex_id.lstrip("0")
+        if not hex_id:
+            hex_id = "0"
+        if len(hex_id) % 2:
+            hex_id = "0" + hex_id
+
+        # 1) Nibble-ordning inom varje byte (59 → 95, osv.)
+        if NIBBLE_ORDER in {"REVERSED", "SWAP", "SWAPPED"}:
+            hex_id = "".join(hex_id[i + 1] + hex_id[i] for i in range(0, len(hex_id), 2))
+
+        # 2) Byteordning
         if BYTE_ORDER == "REVERSED":
-            bytes_list = [hex_id[i:i+2] for i in range(0, len(hex_id), 2)]
+            bytes_list = [hex_id[i:i + 2] for i in range(0, len(hex_id), 2)]
             bytes_list.reverse()
             hex_id = "".join(bytes_list)
 
-        # 2. Konvertera Hex till Decimal
+        # 3) Hex → decimal
         try:
-            decimal_id = int(hex_id, 16)
-            return str(decimal_id)
-
+            return str(int(hex_id, 16))
         except ValueError:
-            print(f"FEL: Kort-ID '{raw_card_id}' kunde inte konverteras från HEX10. Kontrollera om inmatningen är ren hex.")
+            print(
+                f"FEL: Kort-ID '{raw_card_id}' kunde inte konverteras från HEX10. "
+                "Kontrollera om inmatningen är ren hex."
+            )
             return raw_card_id
-        
+
     # Standard: Returnera rådata om formatet inte matchar konfigurerat
     return raw_card_id
 
@@ -600,7 +619,7 @@ def process_raw_card_id(raw_id: str) -> None:
 
     print(
         f"KORT RÅDATA: {raw_id!r} (len={len(raw_id)}) "
-        f"format={CARD_FORMAT}/{BYTE_ORDER} "
+        f"format={CARD_FORMAT}/{BYTE_ORDER}/nibble={NIBBLE_ORDER} "
         f"godkänd_längd={MIN_CARD_ID_LENGTH}-{MAX_CARD_ID_LENGTH}"
     )
     processed_id = convert_card_id(raw_id)

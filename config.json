@@ -25,6 +25,7 @@
   "CARD_PROCESSING": {
     "FORMAT": "HEX10",
     "BYTE_ORDER": "REVERSED",
+    "NIBBLE_ORDER": "REVERSED",
     "minIdLength": 5,
     "maxIdLength": 10,
     "decimalPadLength": 10

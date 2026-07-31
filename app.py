@@ -300,10 +300,10 @@ def handle_ten_card_clip_callback(thread_type, api_status, api_data):
 
                 member_name = str(current_card_status.get("member_name") or "").strip()
                 if klipp_kvar_server == 0:
-                    # Sista klippet (1 → 0): be användaren lämna in kortet
+                    # Sista klippet (1 → 0): klipp OK, men kortet är slut
                     current_card_status["status"] = "TENCARD_CLIPPED_LAST"
-                    current_card_status["message"] = "Inga klipp kvar, lämna in kortet"
-                    current_card_status["secondary_message"] = member_name
+                    current_card_status["message"] = "Klipp OK!"
+                    current_card_status["secondary_message"] = "Inga klipp kvar, lämna in kortet"
                     current_card_status["status_color"] = "orange"
                     current_card_status["color_code"] = "#FF9800"
                 else:

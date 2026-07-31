@@ -179,45 +179,17 @@ pkill -f vkc-kiosk-chromium || true
 cd ~/vkc-kiosk && git pull && sudo SKIP_APT=1 ./install.sh
 ```
 
-**USB-läsare + `HC died` / `couldn't find an input interrupt endpoint` (SDZNKJLTD ffff:0035)**  
-Kernel-`usbhid` på interface 1 krockar med Pi xHCI.  
-Lösning: `authorized_default=0` + prepare-script som **lossar `usbhid` före authorize**, låser iface med `driver_override`, läser **iface 0 via PyUSB**.
+**USB-läsare + `HC died` / iface-1-fel (YAROGNTEC/SDZNKJLTD `ffff:0035`)**  
 
 ```bash
-cd ~/vkc-kiosk
-# Om config.json blockerar pull: cp config.json /tmp/ && git checkout -- config.json
-git pull
-./venv/bin/pip install -r requirements.txt
-sudo ./deploy/install-usb-reader-quirk.sh
+sudo vkc-kiosk setup-reader
 sudo reboot
+vkc-kiosk configure-reader
+vkc-kiosk restart
 ```
 
-Efter reboot (gärna via USB2-hub):
-
-```bash
-cat /proc/cmdline | tr ' ' '\n' | grep -E 'authorized_default|usbhid.quirks'
-# båda raderna måste synas
-sudo dmesg -w
-journalctl -t vkc-kiosk -n 20
-```
-
-Förväntat vid inkoppling:
-- Hub + `USB Reader` syns (`authorized to connect`)
-- journal: `usbhid unloaded before authorize` + `reader prepared`
-- **Ingen** `usbhid ... couldn't find an input interrupt endpoint` / `HC died`
-
-```bash
-sudo systemctl restart vkc-kiosk
-journalctl -u vkc-kiosk -f
-# ska visa: USB-kortläsartråd startad (pyusb) / USB: Ansluten ... Lyssnar
-```
-
-`config.json`: `"READER": { "backend": "usb", "usbVendor": "0xffff", "usbProduct": "0x0035" }`  
-(sätts av quirk-scriptet). Om USB redan dött → **reboot** först.
-
-**USB-tangentbord (t.ex. ActiveJet):** blacklista **inte** `usbhid` — tangentbordet dör då.  
-Prepare-scriptet sätter ignore-quirk live och unloadar `usbhid` bara om inget annat använder den.  
-Om iface-1-felet kvarstår med tangentbord inkopplat: testa med tangentbord urkopplat, eller byt läsare till enkel HID keyboard-wedge.
+Efter reboot: båda cmdline-raderna ska synas (`authorized_default=0` + `usbhid.quirks`).  
+**USB-tangentbord:** blacklista **inte** `usbhid`.
 
 **Pi Connect**
 Chromium körs i vanlig fullskärm (`--start-fullscreen`), inte hårdlåst kiosk. Du kan lämna med F11 eller Alt+Tab.

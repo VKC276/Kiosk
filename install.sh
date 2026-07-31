@@ -235,8 +235,8 @@ VKC Kiosk installerad
   Tjänster: vkc-kiosk.service$([ "${SKIP_BROWSER:-0}" = "1" ] || echo " + vkc-kiosk-browser.service")
 
 Nästa steg:
-  1) Lista kortläsare:   vkc-kiosk devices
-  2) Justera config:     nano ${KIOSK_DIR}/config.json
+  1) YAROGNTEC-läsare?:  sudo vkc-kiosk setup-reader && sudo reboot
+  2) Konfigurera läsare: vkc-kiosk configure-reader
   3) Starta om:          vkc-kiosk restart
   4) Status/loggar:      vkc-kiosk status
 

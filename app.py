@@ -434,10 +434,39 @@ def fetch_latest_card_data(data_url):
         print(f"CACHE FEL: Nätverksfel: {e}")
         return None
 
+def normalize_card_number(value) -> str:
+    """Normalisera Kortnummer från GAS/Sheets (int/float/str) till ren siffersträng."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return str(value).strip()
+    text = str(value).strip().replace(" ", "")
+    if not text:
+        return ""
+    # Sheets/JSON kan ge "1443137877.0"
+    try:
+        as_float = float(text)
+        if as_float.is_integer():
+            return str(int(as_float))
+    except ValueError:
+        pass
+    if text.endswith(".0") and text[:-2].isdigit():
+        return text[:-2]
+    return text
+
+
 def search_local_cache(card_id, card_cache, tencard_cache):
     """Söker i den lokala cachelistan (medlemskort) OCH 10-kortscachen."""
     
-    card_id_str = str(card_id)
+    card_id_str = normalize_card_number(card_id)
+    if not card_id_str:
+        return None
     
     # 1. Sök i 10-kortscachen (prioritet 1)
     ten_card = tencard_cache.get(card_id_str)
@@ -472,7 +501,7 @@ def search_local_cache(card_id, card_cache, tencard_cache):
         
     # 2. Sök i vanliga medlemskortscachen (prioritet 2)
     for card in card_cache:
-        if str(card.get("Kortnummer")) == card_id_str:
+        if normalize_card_number(card.get("Kortnummer")) == card_id_str:
             
             raw_status = card.get("Status", "Okänd Status").upper()
             member_name = card.get("Namn", "Okänt namn")
@@ -530,7 +559,7 @@ def cache_updater_thread():
         ten_card_list = fetch_latest_card_data(TENCARD_DATA_URL)
         if ten_card_list and isinstance(ten_card_list, list):
             # Konvertera listan till en dictionary för snabbare uppslagning
-            TENCARD_CACHE = {str(card.get("Kortnummer")): card for card in ten_card_list if card.get("Kortnummer") is not None}
+            TENCARD_CACHE = _index_tencards(ten_card_list)
             print(f"CACHE UPDATER: Laddade {len(TENCARD_CACHE)} 10-kort.")
         else:
             print("CACHE UPDATER: Varning: Kunde inte ladda 10-kort. Fortsätter i offline-läge.")
@@ -540,29 +569,12 @@ def cache_updater_thread():
     CACHE_LAST_UPDATE = time.time()
     
     while SHOULD_RUN:
-        time.sleep(CACHE_UPDATE_INTERVAL)
-        
-        if (time.time() - CACHE_LAST_UPDATE) >= CACHE_UPDATE_INTERVAL:
-            print("CACHE UPDATER: Tiden har löpt ut, startar bakgrundsuppdatering.")
-            
-            # Uppdatera vanliga kort
-            new_member_cache = fetch_latest_card_data(config.get("DATA_URL"))
-            if new_member_cache and isinstance(new_member_cache, list):
-                CARD_CACHE = new_member_cache
-                print("CACHE UPDATER: Uppdatering av medlemskort lyckades.")
-            else:
-                print("CACHE UPDATER: Misslyckades uppdatera medlemskort. Behåller gammal data.")
-            
-            # Uppdatera 10-kort
-            if TENCARD_DATA_URL:
-                new_ten_card_list = fetch_latest_card_data(TENCARD_DATA_URL)
-                if new_ten_card_list and isinstance(new_ten_card_list, list):
-                    TENCARD_CACHE = {str(card.get("Kortnummer")): card for card in new_ten_card_list if card.get("Kortnummer") is not None}
-                    print("CACHE UPDATER: Uppdatering av 10-kort lyckades.")
-                else:
-                    print("CACHE UPDATER: Misslyckades uppdatera 10-kort. Behåller gammal data.")
+        time.sleep(min(5, CACHE_UPDATE_INTERVAL))
+        if (time.time() - CACHE_LAST_UPDATE) < CACHE_UPDATE_INTERVAL:
+            continue
 
-            CACHE_LAST_UPDATE = time.time()
+        print("CACHE UPDATER: Tiden har löpt ut, startar bakgrundsuppdatering.")
+        refresh_caches()
 
 
 # --- KORTLÄSNING OCH HUVUDLOGIK ---
@@ -576,12 +588,56 @@ def parse_card_id(key_events):
             
     return card_id_str
 
+def _index_tencards(ten_card_list):
+    indexed = {}
+    for card in ten_card_list or []:
+        key = normalize_card_number(card.get("Kortnummer"))
+        if key:
+            indexed[key] = card
+    return indexed
+
+
+def refresh_caches() -> dict:
+    """Hämta medlems- och 10-kortscache från GAS på nytt."""
+    global CARD_CACHE, TENCARD_CACHE, CACHE_LAST_UPDATE
+
+    result = {
+        "members_ok": False,
+        "tencards_ok": False,
+        "members_cached": len(CARD_CACHE),
+        "tencards_cached": len(TENCARD_CACHE),
+    }
+
+    new_member_cache = fetch_latest_card_data(config.get("DATA_URL"))
+    if new_member_cache and isinstance(new_member_cache, list):
+        CARD_CACHE = new_member_cache
+        result["members_ok"] = True
+        print(f"CACHE: Uppdaterade {len(CARD_CACHE)} medlemskort.")
+    else:
+        print("CACHE: Misslyckades uppdatera medlemskort. Behåller gammal data.")
+
+    if TENCARD_DATA_URL:
+        new_ten_card_list = fetch_latest_card_data(TENCARD_DATA_URL)
+        if new_ten_card_list and isinstance(new_ten_card_list, list):
+            TENCARD_CACHE = _index_tencards(new_ten_card_list)
+            result["tencards_ok"] = True
+            print(f"CACHE: Uppdaterade {len(TENCARD_CACHE)} 10-kort.")
+        else:
+            print("CACHE: Misslyckades uppdatera 10-kort. Behåller gammal data.")
+
+    CACHE_LAST_UPDATE = time.time()
+    result["members_cached"] = len(CARD_CACHE)
+    result["tencards_cached"] = len(TENCARD_CACHE)
+    result["cache_age_seconds"] = 0
+    return result
+
+
 def handle_card_read(card_id):
     """Huvudfunktion som hanterar sökning och validering med LOKAL CACHE."""
     global current_card_status, LAST_READ_TIME, CARD_CACHE, TENCARD_CACHE
     global IS_CLIPPING_ACTIVE
 
-    card_id_str = str(card_id)
+    card_id_str = normalize_card_number(card_id)
 
     # 1. Sök i den lokala cachen (medlemskort eller 10-kort)
     status_data = search_local_cache(card_id_str, CARD_CACHE, TENCARD_CACHE)
@@ -589,12 +645,19 @@ def handle_card_read(card_id):
     # 2. Status om kortet INTE hittades
     if not status_data:
         msg = "Kortet hittades inte i systemet."
+        print(
+            f"KORT EJ HITTAT: {card_id_str!r} "
+            f"(medlemmar={len(CARD_CACHE)}, 10-kort={len(TENCARD_CACHE)})"
+        )
 
         status_data = {
             "type": "UNKNOWN",
             "status": "NOT_FOUND",
             "message": msg,
-            "secondary_message": "Vänligen kontakta personal för registrering.",
+            "secondary_message": (
+                f"ID {card_id_str} finns inte i cachen ännu. "
+                "Kontakta personal eller vänta på cache-uppdatering."
+            ),
             "status_color": "red",
             "color_code": "#F44336",
             "card_number_dec": card_id_str,
@@ -797,13 +860,41 @@ def stream():
 
 @app.route('/healthz')
 def healthz():
+    age = (time.time() - CACHE_LAST_UPDATE) if CACHE_LAST_UPDATE else None
     return jsonify({
         "ok": True,
         "reader_device": ACTIVE_READER_DEVICE,
         "cache_update_interval_seconds": CACHE_UPDATE_INTERVAL,
+        "cache_age_seconds": int(age) if age is not None else None,
         "members_cached": len(CARD_CACHE),
         "tencards_cached": len(TENCARD_CACHE),
         "clipping": IS_CLIPPING_ACTIVE,
+    })
+
+
+@app.route('/api/cache/refresh', methods=['POST', 'GET'])
+def api_cache_refresh():
+    """Tvinga omhämtning av medlems-/10-kortscache från GAS."""
+    result = refresh_caches()
+    return jsonify({"ok": True, **result})
+
+
+@app.route('/api/cache/lookup/<card_id>')
+def api_cache_lookup(card_id):
+    """Felsök om ett kort-ID finns i cachen (exakt samma matchning som läsaren)."""
+    needle = normalize_card_number(card_id)
+    hit = search_local_cache(needle, CARD_CACHE, TENCARD_CACHE)
+    sample_members = [
+        normalize_card_number(c.get("Kortnummer"))
+        for c in CARD_CACHE[:5]
+    ]
+    return jsonify({
+        "query": needle,
+        "found": bool(hit),
+        "result": hit,
+        "members_cached": len(CARD_CACHE),
+        "tencards_cached": len(TENCARD_CACHE),
+        "sample_member_ids": sample_members,
     })
 
 

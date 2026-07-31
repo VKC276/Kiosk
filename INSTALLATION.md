@@ -193,12 +193,9 @@ journalctl -u vkc-kiosk -f
 `config.json`: `"READER": { "backend": "usb", "usbVendor": "0xffff", "usbProduct": "0x0035" }`  
 (sätts av quirk-scriptet). Om USB redan dött → **reboot** först.
 
-Om `usbhid`-unload misslyckas och felet kvarstår (sista utvägen — USB-tangentbord slutar fungera; använd Pi Connect):
-
-```bash
-echo 'blacklist usbhid' | sudo tee /etc/modprobe.d/blacklist-usbhid-vkc.conf
-sudo reboot
-```
+**USB-tangentbord (t.ex. ActiveJet):** blacklista **inte** `usbhid` — tangentbordet dör då.  
+Prepare-scriptet sätter ignore-quirk live och unloadar `usbhid` bara om inget annat använder den.  
+Om iface-1-felet kvarstår med tangentbord inkopplat: testa med tangentbord urkopplat, eller byt läsare till enkel HID keyboard-wedge.
 
 **Pi Connect**
 Chromium körs i vanlig fullskärm (`--start-fullscreen`), inte hårdlåst kiosk. Du kan lämna med F11 eller Alt+Tab.

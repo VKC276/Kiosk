@@ -16,7 +16,8 @@ Användning: vkc-kiosk <kommando>
   start               Starta tjänster
   logs                Följ journal-loggar
   devices             Lista input-enheter (kortläsare)
-  update              git pull + pip + restart
+  update              git pull (behåller config.json) + pip + restart
+  pull                git pull och behåller din lokala config.json
   config              Öppna config.json i \$EDITOR
   url                 Skriv ut lokal kiosk-URL
   setup-reader        Installera YAROGNTEC/SDZNKJLTD USB-fix (systemändringar)
@@ -50,9 +51,34 @@ cmd_restart() {
   cmd_status
 }
 
+preserve_config_around() {
+  # Kör ett kommando medan lokal config.json skyddas från git overwrite.
+  local backup="${ROOT_DIR}/config.json.localbak"
+  local had_config=0
+  if [[ -f "${ROOT_DIR}/config.json" ]]; then
+    had_config=1
+    cp -a "${ROOT_DIR}/config.json" "${backup}"
+    git -C "${ROOT_DIR}" stash push -m "vkc-kiosk auto-stash config" -- config.json >/dev/null 2>&1 || true
+  fi
+  local rc=0
+  "$@" || rc=$?
+  if [[ "${had_config}" -eq 1 && -f "${backup}" ]]; then
+    cp -a "${backup}" "${ROOT_DIR}/config.json"
+    echo "Återställde din lokala config.json (backup: ${backup})"
+  fi
+  return "${rc}"
+}
+
+cmd_pull() {
+  cd "${ROOT_DIR}"
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+  preserve_config_around git pull --ff-only origin "${branch}"
+}
+
 cmd_update() {
   cd "${ROOT_DIR}"
-  git pull --ff-only
+  cmd_pull
   if [[ -x "${ROOT_DIR}/venv/bin/pip" ]]; then
     "${ROOT_DIR}/venv/bin/pip" install -r requirements.txt
   fi
@@ -104,6 +130,7 @@ main() {
     logs)    sudo journalctl -u "${SERVICE_API}" -u "${SERVICE_BROWSER}" -f ;;
     devices) cmd_devices ;;
     update)  cmd_update ;;
+    pull)    cmd_pull ;;
     config)  "${EDITOR:-nano}" "${ROOT_DIR}/config.json" ;;
     url)     echo "http://127.0.0.1:$(port)/" ;;
     setup-reader) cmd_setup_reader ;;

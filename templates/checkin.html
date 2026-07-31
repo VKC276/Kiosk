@@ -156,7 +156,7 @@ h1 {
  // Se till att filerna success.mp3, failure.mp3 och warning.mp3 ligger i mappen static/
  const audioSuccess = new Audio('/static/success.mp3'); // Godkänd (ACTIVE, TENCARD_CLIPPED_OK, TENCARD_READY)
  const audioFailure = new Audio('/static/failure.mp3'); // Misslyckad (EXPIRED, NOT_FOUND, TENCARD_EXHAUSTED etc.)
- const audioWarning = new Audio('/static/warning.mp3'); // Varning (EXPIRING_SOON)
+ const audioWarning = new Audio('/static/warning.mp3'); // Varning (EXPIRING_SOON, sista klipp)
 
  let lastPlayedStatus = null;
 
@@ -169,8 +169,8 @@ h1 {
   ) {
    // Godkända statusar
    audioSuccess.play().catch(e => console.error("Kunde inte spela upp godkänd-ljud:", e));
-  } else if (status === 'EXPIRING_SOON') {
-   // Varning
+  } else if (status === 'EXPIRING_SOON' || status === 'TENCARD_CLIPPED_LAST') {
+   // Varning — inkl. sista klippet (1 → 0)
    audioWarning.play().catch(e => console.error("Kunde inte spela upp varning-ljud:", e));
   } else if (
     status === 'EXPIRED' || 

@@ -18,7 +18,6 @@ LOCK_FILE="${PROFILE_DIR}/.start.lock"
 mkdir -p "${PROFILE_DIR}"
 
 # Systemd saknar ofta session-DBus → Chromium loggar "Unknown address type".
-# Sätt en giltig unix-address om session-bussen finns.
 UID_NUM="$(id -u)"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${UID_NUM}}"
 export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
@@ -28,7 +27,6 @@ elif [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
   unset DBUS_SESSION_BUS_ADDRESS || true
 fi
 
-# Wayland (Pi OS Bookworm/labwc) om socket finns; annars X11.
 if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
   for candidate in wayland-0 wayland-1; do
     if [[ -S "${RUNTIME_DIR}/${candidate}" ]]; then
@@ -55,18 +53,27 @@ if [[ -z "${BROWSER}" ]]; then
   exit 1
 fi
 
-# En enda instans per profil — annars öppnar Chromium bara en ny flik
+# En enda start i taget. Misslyckad lock = annan start pågår → fail (systemd retry),
+# INTE exit 0 (det lämnar tjänsten "lyckad" utan fönster).
 exec 9>"${LOCK_FILE}"
 if ! flock -n 9; then
-  echo "VKC Kiosk-browser körs redan (lock ${LOCK_FILE}) — ingen ny start."
-  exit 0
+  echo "VKC Kiosk-browser: lock upptagen (${LOCK_FILE}) — försök igen." >&2
+  exit 1
 fi
 
-# Om en Chromium med samma profil redan lever: låt den vara
+# Städa ev. kvarvarande profilprocesser innan ny start (efter manuell kill / krasch).
 if pgrep -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1; then
-  echo "Chromium med kiosk-profil körs redan — ingen ny start."
-  exit 0
+  echo "Hittade gammal Chromium med kiosk-profil — stoppar den före omstart."
+  pkill -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1 || true
+  sleep 1
+  pkill -9 -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1 || true
+  sleep 0.5
 fi
+
+# Chromium SingletonLock kan blockera ny start efter hård kill
+rm -f "${PROFILE_DIR}/SingletonLock" \
+      "${PROFILE_DIR}/SingletonCookie" \
+      "${PROFILE_DIR}/SingletonSocket" 2>/dev/null || true
 
 if [[ -z "${WAYLAND_DISPLAY:-}" ]] && command -v xset >/dev/null 2>&1; then
   xset s off >/dev/null 2>&1 || true
@@ -76,8 +83,6 @@ fi
 
 echo "Startar ${BROWSER} → ${URL} (DISPLAY=${DISPLAY:-?} WAYLAND=${WAYLAND_DISPLAY:--} DBUS=${DBUS_SESSION_BUS_ADDRESS:-unset})"
 
-# Behåll denna process som förgrund (viktigt för systemd).
-# Ingen --kiosk (hårdlås); fullskärm räcker för Pi Connect.
 exec "${BROWSER}" \
   --start-fullscreen \
   --user-data-dir="${PROFILE_DIR}" \

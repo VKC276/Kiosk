@@ -69,6 +69,20 @@ Minst detta:
 
 Tips: om `event*`-numret ändras vid omstart kan du i stället sätta `nameContains` till en unik del av enhetsnamnet (syns i `vkc-kiosk devices`).
 
+### Kort-ID (CARD_PROCESSING)
+
+SDZNKJLTD skickar ofta nollpaddad hex med omvänd nibble-ordning. Exempel: rå `00000055984065` → `1443137877` med:
+
+```json
+"CARD_PROCESSING": {
+  "FORMAT": "HEX10",
+  "BYTE_ORDER": "REVERSED",
+  "NIBBLE_ORDER": "REVERSED",
+  "minIdLength": 5,
+  "maxIdLength": 10
+}
+```
+
 ### Slides (övre skärmytan)
 
 Varje post i `KIOSK.slides` är en sida med egen visningstid:

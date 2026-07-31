@@ -18,6 +18,8 @@
   },
   "TIMEOUTS": {
     "statusDisplaySeconds": 3,
+    "lastClipOkSeconds": 3,
+    "lastClipReturnSeconds": 5,
     "logRequestSeconds": 5,
     "clipRequestSeconds": 10,
     "sseHeartbeatSeconds": 20

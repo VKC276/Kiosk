@@ -83,6 +83,9 @@ REST_TIMEOUT_SECONDS = int(TIMEOUTS_CFG.get("statusDisplaySeconds", 3))
 LOG_REQUEST_TIMEOUT = int(TIMEOUTS_CFG.get("logRequestSeconds", 5))
 CLIP_REQUEST_TIMEOUT = int(TIMEOUTS_CFG.get("clipRequestSeconds", 10))
 SSE_HEARTBEAT_SECONDS = int(TIMEOUTS_CFG.get("sseHeartbeatSeconds", 20))
+# Sista klipp (1→0): fas 1 "Klipp OK!" sedan fas 2 lämna-in-meddelande
+LAST_CLIP_OK_SECONDS = int(TIMEOUTS_CFG.get("lastClipOkSeconds", 3))
+LAST_CLIP_RETURN_SECONDS = int(TIMEOUTS_CFG.get("lastClipReturnSeconds", 5))
 
 CARD_FORMAT = str(CARD_CFG.get("FORMAT", "DEC10")).upper()
 BYTE_ORDER = str(CARD_CFG.get("BYTE_ORDER", "NORMAL")).upper()
@@ -270,10 +273,37 @@ def start_background_clip(card_id, callback):
     print(f"Klipp-process för kort {card_id} startad i bakgrunden.")
 
 
+def _schedule_last_clip_return_message(card_id: str) -> None:
+    """Efter sista klippet: visa 'Klipp OK!' först, sedan lämna-in-meddelande."""
+
+    def _phase_two():
+        global current_card_status, LAST_READ_TIME
+        time.sleep(max(0, LAST_CLIP_OK_SECONDS))
+        with STATUS_LOCK:
+            if not current_card_status:
+                return
+            if current_card_status.get("card_number_dec") != card_id:
+                return
+            if current_card_status.get("status") != "TENCARD_CLIPPED_LAST":
+                return
+            current_card_status["status"] = "TENCARD_CLIPPED_LAST_RETURN"
+            current_card_status["message"] = "Lämna in kortet i reception"
+            current_card_status["secondary_message"] = ""
+            current_card_status["status_color"] = "orange"
+            current_card_status["color_code"] = "#FF9800"
+            current_card_status["status_expires_at"] = time.time() + LAST_CLIP_RETURN_SECONDS
+            LAST_READ_TIME = time.time()
+        sse_queue.put("read_complete")
+        print(f"[KLIPP] Sista klipp fas 2 för {card_id}: lämna in kortet.")
+
+    threading.Thread(target=_phase_two, daemon=True).start()
+
+
 def handle_ten_card_clip_callback(thread_type, api_status, api_data):
     global current_card_status, LAST_READ_TIME, TENCARD_CACHE
     global IS_CLIPPING_ACTIVE
 
+    schedule_last_clip_phase = False
     with STATUS_LOCK:
         if current_card_status is None:
             print(
@@ -300,18 +330,23 @@ def handle_ten_card_clip_callback(thread_type, api_status, api_data):
 
                 member_name = str(current_card_status.get("member_name") or "").strip()
                 if klipp_kvar_server == 0:
-                    # Sista klippet (1 → 0): klipp OK, men kortet är slut
+                    # Fas 1: Klipp OK (orange). Fas 2 schemaläggs separat.
                     current_card_status["status"] = "TENCARD_CLIPPED_LAST"
                     current_card_status["message"] = "Klipp OK!"
-                    current_card_status["secondary_message"] = "Inga klipp kvar, lämna in kortet"
+                    current_card_status["secondary_message"] = ""
                     current_card_status["status_color"] = "orange"
                     current_card_status["color_code"] = "#FF9800"
+                    current_card_status["status_expires_at"] = (
+                        time.time() + LAST_CLIP_OK_SECONDS + LAST_CLIP_RETURN_SECONDS
+                    )
+                    schedule_last_clip_phase = True
                 else:
                     current_card_status["status"] = "TENCARD_CLIPPED_OK"
                     current_card_status["message"] = f"Klipp OK! {klipp_kvar_server} klipp kvar."
                     current_card_status["secondary_message"] = member_name
                     current_card_status["status_color"] = "green"
                     current_card_status["color_code"] = "#4CAF50"
+                    current_card_status.pop("status_expires_at", None)
 
             elif clip_status == "fail" and api_data.get("reason") == "slut":
                 print(f"[KLIPP] Klipp misslyckades: Slut på klipp för kort {card_id}.")
@@ -320,6 +355,7 @@ def handle_ten_card_clip_callback(thread_type, api_status, api_data):
                 current_card_status["secondary_message"] = "Vänligen köp nytt kort."
                 current_card_status["status_color"] = "red"
                 current_card_status["color_code"] = "#F44336"
+                current_card_status.pop("status_expires_at", None)
 
             else:
                 print(f"[KLIPP] Klipp-API svarade fail/okänd anledning: {api_data}")
@@ -328,6 +364,7 @@ def handle_ten_card_clip_callback(thread_type, api_status, api_data):
                 current_card_status["secondary_message"] = f"Status: {api_status}"
                 current_card_status["status_color"] = "orange"
                 current_card_status["color_code"] = "#FF9800"
+                current_card_status.pop("status_expires_at", None)
 
         else:
             print(f"[KLIPP] KRITISKT FEL vid klipp: {api_data}")
@@ -338,12 +375,15 @@ def handle_ten_card_clip_callback(thread_type, api_status, api_data):
             )
             current_card_status["status_color"] = "red"
             current_card_status["color_code"] = "#D32F2F"
+            current_card_status.pop("status_expires_at", None)
 
         LAST_READ_TIME = time.time()
         IS_CLIPPING_ACTIVE = False
 
     sse_queue.put("read_complete")
     print("[KLIPP] IS_CLIPPING_ACTIVE satt till False. Timeout startar nu.")
+    if schedule_last_clip_phase:
+        _schedule_last_clip_return_message(str(card_id))
 
 
 # --- CACHING FUNKTIONER (Oändrade) ---
@@ -918,13 +958,16 @@ def checkin():
     global current_card_status
 
     with STATUS_LOCK:
-        if (
-            current_card_status
-            and (time.time() - LAST_READ_TIME) >= REST_TIMEOUT_SECONDS
-            and not IS_CLIPPING_ACTIVE
-        ):
-            print("Gränssnitt: Status timeout uppnådd. Återgår till viloläge.")
-            current_card_status = None
+        if current_card_status and not IS_CLIPPING_ACTIVE:
+            expires_at = current_card_status.get("status_expires_at")
+            timed_out = (
+                time.time() >= float(expires_at)
+                if expires_at is not None
+                else (time.time() - LAST_READ_TIME) >= REST_TIMEOUT_SECONDS
+            )
+            if timed_out:
+                print("Gränssnitt: Status timeout uppnådd. Återgår till viloläge.")
+                current_card_status = None
         status_snapshot = current_card_status
 
     return render_template(

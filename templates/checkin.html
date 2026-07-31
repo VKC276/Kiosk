@@ -170,7 +170,7 @@ h1 {
    // Godkända statusar
    audioSuccess.play().catch(e => console.error("Kunde inte spela upp godkänd-ljud:", e));
   } else if (status === 'EXPIRING_SOON' || status === 'TENCARD_CLIPPED_LAST') {
-   // Varning — inkl. sista klippet (1 → 0)
+   // Varning vid sista klippets fas 1 ("Klipp OK!"). Fas 2 är tyst.
    audioWarning.play().catch(e => console.error("Kunde inte spela upp varning-ljud:", e));
   } else if (
     status === 'EXPIRED' || 

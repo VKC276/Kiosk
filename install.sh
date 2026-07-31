@@ -203,17 +203,17 @@ install_services() {
   systemctl restart vkc-kiosk.service
 
   if [[ "${SKIP_BROWSER:-0}" != "1" ]]; then
-    systemctl enable vkc-kiosk-browser.service
-    # Browser kräver ofta grafisk session — starta best-effort
-    systemctl restart vkc-kiosk-browser.service || warn "Browser-tjänsten startade inte ännu (saknas display?). Den startar vid nästa grafiska login/reboot."
+    # En startväg bara: systemd-browser. Autostart-desktop tas bort om den finns,
+    # annars startas Chromium dubbelt och öppnar nya flikar i en loop.
+    local autostart_file="/home/${KIOSK_USER}/.config/autostart/vkc-kiosk.desktop"
+    if [[ -f "${autostart_file}" ]]; then
+      warn "Tar bort ${autostart_file} (undviker dubbelstart av Chromium)"
+      rm -f "${autostart_file}"
+    fi
 
-    # Autostart-fallback (LXDE / labwc / vanliga skrivbord)
-    local autostart_dir="/home/${KIOSK_USER}/.config/autostart"
-    mkdir -p "${autostart_dir}"
-    sed -e "s|__KIOSK_DIR__|${KIOSK_DIR}|g" \
-      "${KIOSK_DIR}/deploy/vkc-kiosk.desktop.in" \
-      > "${autostart_dir}/vkc-kiosk.desktop"
-    chown -R "${KIOSK_USER}:${KIOSK_USER}" "/home/${KIOSK_USER}/.config"
+    systemctl enable vkc-kiosk-browser.service
+    systemctl restart vkc-kiosk-browser.service \
+      || warn "Browser-tjänsten startade inte ännu (saknas display?). Den startar vid nästa grafiska login/reboot."
   fi
 }
 

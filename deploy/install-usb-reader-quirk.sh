@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# SDZNKJLTD USB Reader (ffff:0035) på Raspberry Pi:
-# - Stoppa usbhid från att binda enheten (iface 1 dödar xHCI)
-# - Appen läser iface 0 via PyUSB (READER.backend = "usb")
-#
-# OBS: usbhid är ofta inbyggd i Pi-kerneln → modprobe.d räcker INTE.
-# Quirken måste även ligga i /boot/firmware/cmdline.txt (eller /boot/cmdline.txt).
+# SDZNKJLTD USB Reader (ffff:0035) på Raspberry Pi.
+# Stoppar usbhid helt via usbcore.authorized_default=0 + udev.
+# Appen läser iface 0 via PyUSB.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-QUIRK_TOKEN="usbhid.quirks=0xffff:0x0035:0x4"
+
+# Båda behövs: authorized_default blockerar bind; usbhid.quirks är extra skydd
+CMDLINE_TOKENS=(
+  "usbcore.authorized_default=0"
+  "usbhid.quirks=0xffff:0x0035:0x4"
+)
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Kör som root: sudo $0" >&2
@@ -19,6 +21,10 @@ fi
 install -d /etc/modprobe.d
 cp "${SCRIPT_DIR}/modprobe.d/usbhid-sdznkj.conf" /etc/modprobe.d/usbhid-sdznkj.conf
 chmod 644 /etc/modprobe.d/usbhid-sdznkj.conf
+
+install -d /usr/local/lib/vkc-kiosk
+cp "${SCRIPT_DIR}/prepare-sdznkj-reader.sh" /usr/local/lib/vkc-kiosk/prepare-sdznkj-reader.sh
+chmod 755 /usr/local/lib/vkc-kiosk/prepare-sdznkj-reader.sh
 
 cp "${SCRIPT_DIR}/99-sdznkj-usb-permissions.rules" /etc/udev/rules.d/99-sdznkj-usb-permissions.rules
 chmod 644 /etc/udev/rules.d/99-sdznkj-usb-permissions.rules
@@ -33,7 +39,6 @@ rm -f /etc/udev/rules.d/99-sdznkj-usb-reader.rules
 systemctl disable --now vkc-usb-reader-guard.service 2>/dev/null || true
 rm -f /etc/systemd/system/vkc-usb-reader-guard.service
 
-# --- Kernel cmdline (krävs när usbhid är built-in) ---
 CMDLINE=""
 for candidate in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
   if [[ -f "${candidate}" ]]; then
@@ -42,18 +47,18 @@ for candidate in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
   fi
 done
 
-if [[ -n "${CMDLINE}" ]]; then
-  if grep -q "usbhid.quirks=" "${CMDLINE}"; then
-    # Ersätt befintlig usbhid.quirks=...
-    sed -i -E "s/usbhid\.quirks=[^ ]+/${QUIRK_TOKEN}/g" "${CMDLINE}"
-  else
-    # cmdline.txt måste vara EN rad
-    current="$(tr -d '\n' < "${CMDLINE}")"
-    printf '%s %s\n' "${current}" "${QUIRK_TOKEN}" > "${CMDLINE}"
-  fi
-  echo "Uppdaterade ${CMDLINE} med ${QUIRK_TOKEN}"
+if [[ -z "${CMDLINE}" ]]; then
+  echo "VARNING: Hittade ingen cmdline.txt" >&2
 else
-  echo "VARNING: Hittade ingen cmdline.txt — lägg manuellt till: ${QUIRK_TOKEN}" >&2
+  current="$(tr -d '\n' < "${CMDLINE}")"
+  # Ta bort gamla varianter av våra tokens
+  current="$(echo "${current}" | sed -E 's/usbcore\.authorized_default=[^ ]+//g; s/usbhid\.quirks=[^ ]+//g; s/  +/ /g; s/^ //; s/ $//')"
+  for token in "${CMDLINE_TOKENS[@]}"; do
+    current="${current} ${token}"
+  done
+  printf '%s\n' "${current}" > "${CMDLINE}"
+  echo "Uppdaterade ${CMDLINE}:"
+  cat "${CMDLINE}"
 fi
 
 udevadm control --reload-rules
@@ -81,13 +86,14 @@ PY
 fi
 
 echo
-echo "Installerat."
-echo "Kontrollera cmdline:"
-echo "  cat ${CMDLINE:-/boot/firmware/cmdline.txt}"
-echo
 echo "Reboot KRÄVS:"
 echo "  sudo reboot"
 echo
-echo "Efter reboot:"
-echo "  cat /proc/cmdline | tr ' ' '\\n' | grep usbhid"
-echo "  # dmesg ska visa USB Reader UTAN hid-generic/Keyboard och UTAN HC died"
+echo "Efter reboot, kontrollera:"
+echo "  cat /proc/cmdline | tr ' ' '\\n' | grep -E 'authorized_default|usbhid.quirks'"
+echo "  # Båda måste synas (authorized_default=0 är kritisk)"
+echo
+echo "Vid inkoppling:"
+echo "  journalctl -t vkc-kiosk -n 5   # 'SDZNKJLTD reader prepared...'"
+echo "  dmesg: INGEN hid-generic, INGEN usbhid iface 1-fel, INGEN HC died"
+echo "Sedan: sudo systemctl restart vkc-kiosk && journalctl -u vkc-kiosk -f"

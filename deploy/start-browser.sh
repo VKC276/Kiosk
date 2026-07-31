@@ -17,6 +17,31 @@ PROFILE_DIR="${HOME}/.config/vkc-kiosk-chromium"
 LOCK_FILE="${PROFILE_DIR}/.start.lock"
 mkdir -p "${PROFILE_DIR}"
 
+# Systemd saknar ofta session-DBus → Chromium loggar "Unknown address type".
+# Sätt en giltig unix-address om session-bussen finns.
+UID_NUM="$(id -u)"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${UID_NUM}}"
+export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
+if [[ -S "${RUNTIME_DIR}/bus" ]]; then
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=${RUNTIME_DIR}/bus"
+elif [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+  unset DBUS_SESSION_BUS_ADDRESS || true
+fi
+
+# Wayland (Pi OS Bookworm/labwc) om socket finns; annars X11.
+if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+  for candidate in wayland-0 wayland-1; do
+    if [[ -S "${RUNTIME_DIR}/${candidate}" ]]; then
+      export WAYLAND_DISPLAY="${candidate}"
+      break
+    fi
+  done
+fi
+export DISPLAY="${DISPLAY:-:0}"
+if [[ -z "${XAUTHORITY:-}" && -f "${HOME}/.Xauthority" ]]; then
+  export XAUTHORITY="${HOME}/.Xauthority"
+fi
+
 BROWSER=""
 for candidate in chromium-browser chromium google-chrome google-chrome-stable; do
   if command -v "${candidate}" >/dev/null 2>&1; then
@@ -43,11 +68,13 @@ if pgrep -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1; then
   exit 0
 fi
 
-if command -v xset >/dev/null 2>&1; then
+if [[ -z "${WAYLAND_DISPLAY:-}" ]] && command -v xset >/dev/null 2>&1; then
   xset s off >/dev/null 2>&1 || true
   xset -dpms >/dev/null 2>&1 || true
   xset s noblank >/dev/null 2>&1 || true
 fi
+
+echo "Startar ${BROWSER} → ${URL} (DISPLAY=${DISPLAY:-?} WAYLAND=${WAYLAND_DISPLAY:--} DBUS=${DBUS_SESSION_BUS_ADDRESS:-unset})"
 
 # Behåll denna process som förgrund (viktigt för systemd).
 # Ingen --kiosk (hårdlås); fullskärm räcker för Pi Connect.

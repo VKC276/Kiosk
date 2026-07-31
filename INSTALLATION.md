@@ -146,6 +146,17 @@ Lägg dessa filer i `~/vkc-kiosk/static/` om du vill ha ljud vid blipp:
 2. `vkc-kiosk restart`
 3. Kontrollera att du är inloggad på skrivbordet (grafisk session)
 
+**Chromium öppnar nya flikar i en loop**
+Orsak: browsern startades flera gånger (systemd + autostart, eller `Restart=always`).
+Stoppa loopen:
+
+```bash
+sudo systemctl stop vkc-kiosk-browser
+rm -f ~/.config/autostart/vkc-kiosk.desktop
+pkill -f vkc-kiosk-chromium || true
+cd ~/vkc-kiosk && git pull && sudo SKIP_APT=1 ./install.sh
+```
+
 **Pi Connect**
 Chromium körs i vanlig fullskärm (`--start-fullscreen`), inte hårdlåst kiosk. Du kan lämna med F11 eller Alt+Tab.
 

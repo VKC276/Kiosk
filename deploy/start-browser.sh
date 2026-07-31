@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Startar Chromium i fullskärm (inte hårdlåst kiosk) så Pi Connect m.m. fungerar.
+# Använder flock så systemd/autostart inte öppnar nya flikar i en loop.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,6 +14,7 @@ PY
 )"
 URL="http://127.0.0.1:${PORT}/"
 PROFILE_DIR="${HOME}/.config/vkc-kiosk-chromium"
+LOCK_FILE="${PROFILE_DIR}/.start.lock"
 mkdir -p "${PROFILE_DIR}"
 
 BROWSER=""
@@ -28,15 +30,27 @@ if [[ -z "${BROWSER}" ]]; then
   exit 1
 fi
 
-# Minska skärmsläckare/blankning, men lås inte skrivbordet
+# En enda instans per profil — annars öppnar Chromium bara en ny flik
+exec 9>"${LOCK_FILE}"
+if ! flock -n 9; then
+  echo "VKC Kiosk-browser körs redan (lock ${LOCK_FILE}) — ingen ny start."
+  exit 0
+fi
+
+# Om en Chromium med samma profil redan lever: låt den vara
+if pgrep -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1; then
+  echo "Chromium med kiosk-profil körs redan — ingen ny start."
+  exit 0
+fi
+
 if command -v xset >/dev/null 2>&1; then
   xset s off >/dev/null 2>&1 || true
   xset -dpms >/dev/null 2>&1 || true
   xset s noblank >/dev/null 2>&1 || true
 fi
 
-# Vanlig fullskärm — går att lämna med F11 / Alt+Tab (viktigt för Pi Connect).
-# Ingen --kiosk (hårdlåser UI) och ingen --app (döljer fönsterkontroller).
+# Behåll denna process som förgrund (viktigt för systemd).
+# Ingen --kiosk (hårdlås); fullskärm räcker för Pi Connect.
 exec "${BROWSER}" \
   --start-fullscreen \
   --user-data-dir="${PROFILE_DIR}" \
@@ -45,4 +59,6 @@ exec "${BROWSER}" \
   --disable-restore-session-state \
   --check-for-update-interval=31536000 \
   --autoplay-policy=no-user-gesture-required \
+  --no-first-run \
+  --no-default-browser-check \
   "${URL}"

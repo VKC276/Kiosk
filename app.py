@@ -598,8 +598,14 @@ def process_raw_card_id(raw_id: str) -> None:
     """Gemensam hantering av rått kort-ID från evdev eller USB."""
     global current_card_status, LAST_READ_TIME
 
+    print(
+        f"KORT RÅDATA: {raw_id!r} (len={len(raw_id)}) "
+        f"format={CARD_FORMAT}/{BYTE_ORDER} "
+        f"godkänd_längd={MIN_CARD_ID_LENGTH}-{MAX_CARD_ID_LENGTH}"
+    )
     processed_id = convert_card_id(raw_id)
     processed_id_len = len(processed_id)
+    print(f"KORT EFTER KONVERT: {processed_id!r} (len={processed_id_len})")
     is_valid_decimal = (
         processed_id.isdigit()
         and MIN_CARD_ID_LENGTH <= processed_id_len <= MAX_CARD_ID_LENGTH
@@ -611,13 +617,20 @@ def process_raw_card_id(raw_id: str) -> None:
 
     if not processed_id.isdigit():
         msg = "Fel: Konvertering misslyckades (icke-numeriska tecken kvar)."
-        secondary = f"Kontrollera {CARD_FORMAT} inställning eller kortdata."
+        secondary = (
+            f"Rå: {raw_id!r} → {processed_id!r}. "
+            f"Kontrollera {CARD_FORMAT}/{BYTE_ORDER}."
+        )
     elif processed_id_len < MIN_CARD_ID_LENGTH or processed_id_len > MAX_CARD_ID_LENGTH:
         msg = f"Fel: Ogiltig längd ({processed_id_len} siffror)."
-        secondary = f"Kortet ska ha {MIN_CARD_ID_LENGTH}-{MAX_CARD_ID_LENGTH} siffror."
+        secondary = (
+            f"Rå: {raw_id!r} → {processed_id!r}. "
+            f"Krävs {MIN_CARD_ID_LENGTH}-{MAX_CARD_ID_LENGTH} siffror "
+            f"({CARD_FORMAT}/{BYTE_ORDER})."
+        )
     else:
         msg = "Fel: Okänt ID-format efter bearbetning."
-        secondary = f"Rådata: {raw_id}. Konfig: {CARD_FORMAT}/{BYTE_ORDER}."
+        secondary = f"Rådata: {raw_id!r} → {processed_id!r}. Konfig: {CARD_FORMAT}/{BYTE_ORDER}."
 
     print(f"VARNING: Kort-ID ogiltigt. ID: {processed_id}. Ursprung: {raw_id}. Ignoreras.")
     with STATUS_LOCK:

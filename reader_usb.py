@@ -1,13 +1,15 @@
 """PyUSB-backend för SDZNKJLTD m.fl. som kraschar xHCI via usbhid på iface 1.
 
-Kerneln ska ha usbhid-quirk IGNORE för VID:PID så iface 1 aldrig proberas.
-Denna modul claimar bara interface 0 och läser HID boot-keyboard-rapporter.
+Flöde:
+1) udev sätter authorized=0 + driver_override på iface 0/1 (ingen usbhid).
+2) Vi sätter authorized=1 via sysfs och claimar ENDAST interface 0 med PyUSB.
 """
 
 from __future__ import annotations
 
-import threading
+import glob
 import time
+from pathlib import Path
 
 # USB HID usage → tecken (boot keyboard)
 HID_KEYMAP = {
@@ -18,8 +20,54 @@ HID_KEYMAP = {
 HID_ENTER = {0x28, 0x58}  # Enter, Keypad Enter
 
 
+def _sysfs_device_dir(vendor_id: int, product_id: int) -> Path | None:
+    vend = f"{vendor_id:04x}"
+    prod = f"{product_id:04x}"
+    for vendor_file in glob.glob("/sys/bus/usb/devices/*/idVendor"):
+        path = Path(vendor_file)
+        try:
+            if path.read_text(encoding="utf-8").strip().lower() != vend:
+                continue
+            if (path.parent / "idProduct").read_text(encoding="utf-8").strip().lower() != prod:
+                continue
+            return path.parent
+        except OSError:
+            continue
+    return None
+
+
+def _authorize_device(vendor_id: int, product_id: int) -> bool:
+    """Sätt authorized=1 men behåll driver_override så usbhid inte binder."""
+    devdir = _sysfs_device_dir(vendor_id, product_id)
+    if not devdir:
+        return False
+
+    # Säkerställ override på iface 0/1 innan authorize
+    for iface in sorted(devdir.glob(f"{devdir.name}:*.*")):
+        num_file = iface / "bInterfaceNumber"
+        override = iface / "driver_override"
+        if not num_file.is_file() or not override.is_file():
+            continue
+        try:
+            num = num_file.read_text(encoding="utf-8").strip()
+            if num in {"0", "1"}:
+                override.write_text("do-not-bind", encoding="utf-8")
+        except OSError:
+            pass
+
+    auth = devdir / "authorized"
+    try:
+        if auth.is_file():
+            auth.write_text("1", encoding="utf-8")
+            print(f"USB: authorized=1 på {devdir.name} (driver_override aktiv)")
+            return True
+    except OSError as exc:
+        print(f"USB: kunde inte authorize {devdir}: {exc}")
+    return False
+
+
 def usb_card_reader_thread(vendor_id: int, product_id: int, on_raw_id, should_run=lambda: True):
-    """Lyssna på USB-HID iface 0. on_raw_id(str) anropas vid komplett blipp (före Enter)."""
+    """Lyssna på USB-HID iface 0. on_raw_id(str) anropas vid komplett blipp."""
     try:
         import usb.core
         import usb.util
@@ -33,20 +81,21 @@ def usb_card_reader_thread(vendor_id: int, product_id: int, on_raw_id, should_ru
     )
 
     while should_run():
+        # Om udev satt authorized=0: godkänn utan kernel-bind
+        _authorize_device(vendor_id, product_id)
+
         dev = usb.core.find(idVendor=vendor_id, idProduct=product_id)
         if dev is None:
             time.sleep(1.0)
             continue
 
         try:
-            # Detach kernel driver om den trots quirk sitter kvar på iface 0
             try:
                 if dev.is_kernel_driver_active(0):
                     dev.detach_kernel_driver(0)
             except (ValueError, NotImplementedError, usb.core.USBError):
                 pass
 
-            # Sätt konfiguration om behövs
             try:
                 dev.set_configuration()
             except usb.core.USBError:
@@ -72,7 +121,7 @@ def usb_card_reader_thread(vendor_id: int, product_id: int, on_raw_id, should_ru
             )
 
             buf = []
-            prev_keys = set()
+            prev_keys: set[int] = set()
             reading = False
 
             while should_run():
@@ -93,8 +142,7 @@ def usb_card_reader_thread(vendor_id: int, product_id: int, on_raw_id, should_ru
 
                 for code in pressed:
                     if code in HID_KEYMAP:
-                        if not reading:
-                            reading = True
+                        reading = True
                         buf.append(HID_KEYMAP[code])
                     elif code in HID_ENTER:
                         if buf:

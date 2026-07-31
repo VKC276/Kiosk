@@ -1,2 +1,12 @@
-# Ge kiosk-användaren tillgång till SDZNKJLTD-läsaren via PyUSB (iface 0).
-SUBSYSTEM=="usb", ATTR{idVendor}=="ffff", ATTR{idProduct}=="0035", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+# SDZNKJLTD USB Reader (ffff:0035)
+# 1) Tillåt inte kernel-drivrutiner (usbhid på iface 1 dödar xHCI).
+# 2) Ge användaråtkomst så PyUSB kan claima iface 0 efter authorize.
+
+# Enhetsnivå: blockera autobind tills userspace godkänt
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="ffff", ATTR{idProduct}=="0035", ATTR{authorized}="0", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+
+# Interface 1 får aldrig usbhid
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", ATTR{bInterfaceNumber}=="1", ATTRS{idVendor}=="ffff", ATTRS{idProduct}=="0035", ATTR{driver_override}="do-not-bind"
+
+# Interface 0: ingen kernel-HID; PyUSB claimar
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", ATTR{bInterfaceNumber}=="0", ATTRS{idVendor}=="ffff", ATTRS{idProduct}=="0035", ATTR{driver_override}="do-not-bind"

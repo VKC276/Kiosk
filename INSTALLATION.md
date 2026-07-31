@@ -172,17 +172,23 @@ sudo reboot
 Efter reboot (gärna via hub):
 
 ```bash
-sudo dmesg -T | tail -30
-# Enheten syns, men INTE som "hid-generic ... Keyboard"
-# och INGEN "HC died"
-sudo systemctl restart vkc-kiosk
-journalctl -u vkc-kiosk -f
+cat /proc/cmdline | tr ' ' '\n' | grep usbhid
+sudo dmesg -w
 ```
 
-`config.json` ska ha `"READER": { "backend": "usb", "usbVendor": "0xffff", "usbProduct": "0x0035" }`  
-(sätts automatiskt av quirk-scriptet).
+Förväntat vid inkoppling:
+- Hub + `USB Reader` syns
+- **Ingen** `hid-generic ... Keyboard`
+- **Ingen** `couldn't find an input interrupt endpoint` / `HC died`
 
-Om USB redan dött (inga nya rader i `dmesg`) → **reboot** först.
+```bash
+sudo systemctl restart vkc-kiosk
+journalctl -u vkc-kiosk -f
+# ska visa: USB-kortläsartråd startad (pyusb) / USB: Ansluten ... Lyssnar
+```
+
+`config.json`: `"READER": { "backend": "usb", "usbVendor": "0xffff", "usbProduct": "0x0035" }`  
+(sätts av quirk-scriptet). Om USB redan dött → **reboot** först.
 
 **Pi Connect**
 Chromium körs i vanlig fullskärm (`--start-fullscreen`), inte hårdlåst kiosk. Du kan lämna med F11 eller Alt+Tab.

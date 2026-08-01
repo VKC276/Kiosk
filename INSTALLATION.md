@@ -329,33 +329,25 @@ Vanligt med autologin: lösenordet sparades i användarnyckelringen, som inte al
 
 ```bash
 sudo vkc-kiosk fix-wifi
+# eller direkt (undviker interaktiva frågor):
+sudo vkc-kiosk fix-wifi "MittWifi" "losenordet"
 ```
 
-Ange SSID + lösenord. Kontrollera att filen ligger under `/etc/NetworkManager/system-connections/`. Undvik att spara nätet via skrivbordsdialogen efteråt.
+Om det bara visas en lista och “stannar”: tryck `q` (gammal pager) eller uppdatera och kör igen — nyare script stänger av nmcli-pager. Kontrollera att filen ligger under `/etc/NetworkManager/system-connections/`. Undvik att spara nätet via skrivbordsdialogen efteråt.
 
 **Pi Connect**  
 Chromium körs med `--start-fullscreen` (inte hård `--kiosk`). Lämna med F11 eller Alt+Tab.
 
-**`git pull` / överskriven `config.json`**
+**`git pull` blockeras av lokala ändringar**
 
-`config.json` trackas **inte** i git (bara `config.example.json`). Använd alltid:
-
-```bash
-vkc-kiosk pull
-```
-
-Det tar säkerhetskopia till `config.json.localbak` före pull och återställer den efteråt.
-
-Om config ändå blivit fel:
+Använd `vkc-kiosk pull` (stashar lokala filändringar, behåller `config.json`).
+Manuellt:
 
 ```bash
-# 1) Senaste automatiska backup
+cp -a config.json config.json.localbak
+git stash push -u -m "pi local before pull"
+git pull --ff-only
 cp -a config.json.localbak config.json
-
-# 2) Eller från git stash
-git stash list
-git stash show -p stash@{0} -- config.json | less
-# manuellt kopiera innehållet tillbaka till config.json
 ```
 
 ---

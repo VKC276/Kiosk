@@ -22,6 +22,7 @@ Användning: vkc-kiosk <kommando>
   url                 Skriv ut lokal kiosk-URL
   setup-reader        Installera YAROGNTEC/SDZNKJLTD USB-fix (systemändringar)
   configure-reader    Interaktiv assistent: läsare + kortformat → config.json
+  slides              Hantera karusell: lägg till/ta bort URL, ordning, tid
 EOF
 }
 

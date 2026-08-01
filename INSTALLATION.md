@@ -227,6 +227,7 @@ Lägg i `~/vkc-kiosk/static/`:
 | `vkc-kiosk devices` | Lista input-enheter |
 | `vkc-kiosk setup-reader` | YAROGNTEC systemfix (kräver sudo + reboot) |
 | `vkc-kiosk configure-reader` | Välj läsare + kortformat → `config.json` |
+| `vkc-kiosk slides` | Hantera karusell (URL, ordning, visningstid) |
 | `vkc-kiosk update` | `git pull` + pip + ominstallation |
 | `vkc-kiosk logs` | Följ journal-loggar |
 | `vkc-kiosk config` | Öppna `config.json` |

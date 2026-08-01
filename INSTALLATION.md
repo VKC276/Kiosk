@@ -1,16 +1,15 @@
 # Installationsanvisningar — VKC Kiosk
 
-Guide för att sätta upp kiosken på en Raspberry Pi med Pi OS.
+Guide för Raspberry Pi (Pi OS, skrivbordsversion). Pi 4/5 rekommenderas.
 
 ## Förutsättningar
 
-- Raspberry Pi med **Pi OS** (skrivbordsversion) — Pi 4/5 rekommenderas för full kiosk med Chromium
-- Internetuppkoppling
-- **Autologin** till skrivbordet (så Chromium startar vid boot)
+- Pi OS med skrivbord
+- Internet (WiFi eller ethernet)
+- **Autologin** till skrivbordet (Chromium startar vid boot)
 - USB-kortläsare
 
-Valfritt:
-- [Raspberry Pi Connect](https://www.raspberrypi.com/documentation/services/connect.html) för fjärrstyrning (fungerar — skärmen är fullskärm, inte hårdlåst kiosk)
+Valfritt: [Raspberry Pi Connect](https://www.raspberrypi.com/documentation/services/connect.html) — fungerar; skärmen är fullskärm, inte hårdlåst kiosk.
 
 ---
 
@@ -23,11 +22,12 @@ curl -fsSL https://raw.githubusercontent.com/VKC276/Kiosk/main/install.sh | sudo
 Installern sätter upp:
 
 - apt-paket (Python, Chromium, …)
-- kod under `~/vkc-kiosk`
+- kod under `~/vkc-kiosk` (klon från `main`)
 - Python-venv och beroenden
 - behörighet till kortläsare (`input` / `plugdev`)
 - systemd: `vkc-kiosk` (API) + `vkc-kiosk-browser` (Chromium)
-- kommandot `vkc-kiosk`
+- kommandot `vkc-kiosk` → `/usr/local/bin/vkc-kiosk`
+- `config.json` från `config.example.json` om den saknas
 
 ### Alternativ: klona själv
 
@@ -41,8 +41,8 @@ sudo ./install.sh
 
 ```bash
 sudo KIOSK_USER=vkc KIOSK_DIR=/home/vkc/vkc-kiosk ./install.sh
-sudo SKIP_BROWSER=1 ./install.sh    # bara API, ingen Chromium
-sudo SKIP_APT=1 ./install.sh        # hoppa över apt (vid uppdatering)
+sudo SKIP_BROWSER=1 ./install.sh    # bara API
+sudo SKIP_APT=1 ./install.sh        # vid uppdatering / ominstallation
 ```
 
 ---
@@ -51,65 +51,55 @@ sudo SKIP_APT=1 ./install.sh        # hoppa över apt (vid uppdatering)
 
 ### A) YAROGNTEC / SDZNKJLTD (`ffff:0035`) — kräver systemfix
 
-Den här läsaren kan krascha Pi:ns USB (`HC died`) om kernel-`usbhid` binder interface 1. Kör **alltid** detta script först:
+Läsaren kan krascha Pi USB (`HC died`) om kernel-`usbhid` binder interface 1. Kör **alltid**:
 
 ```bash
 sudo vkc-kiosk setup-reader
-# samma sak:
-# sudo ./scripts/setup-yarogntec-reader.sh
+# samma: sudo ./scripts/setup-yarogntec-reader.sh
 sudo reboot
 ```
-
-Scriptet applicerar:
 
 | Ändring | Syfte |
 |--------|--------|
 | `usbcore.authorized_default=0` i cmdline | Enheter startar unauthorized |
 | `usbhid.quirks=0xffff:0x0035:0x4` | Extra ignore-skydd |
-| udev + `prepare-sdznkj-reader.sh` | Authorize säkert, `driver_override`, undvik iface 1 |
+| udev + `deploy/prepare-sdznkj-reader.sh` | Authorize säkert, `driver_override`, undvik iface 1 |
 | modprobe-quirk | Persistens över reboot |
 | `pyusb` i venv | Appen läser iface 0 direkt |
-| `config.json` → `READER.backend=usb` | PyUSB-backend |
+| `READER.backend=usb` i config | PyUSB-backend |
 
-**Övriga läsare** (vanlig HID keyboard-wedge) behöver **inte** `setup-reader`.
+**Övriga läsare** (HID keyboard-wedge): **ingen** `setup-reader`.
 
-**USB-tangentbord** (t.ex. ActiveJet): blacklista **inte** `usbhid` — då dör tangentbordet. Setup-scriptet är skrivet för att behålla andra HID-enheter.
+**USB-tangentbord** (t.ex. ActiveJet): blacklista **inte** hela `usbhid`.
 
 ### B) Konfigurera läsare + kortformat (alla läsare)
 
-Efter reboot (och för alla läsartyper):
-
 ```bash
 vkc-kiosk configure-reader
-# samma sak:
-# ./venv/bin/python scripts/configure-card-reader.py
+# samma: ./venv/bin/python scripts/configure-card-reader.py
+vkc-kiosk save-config
 ```
 
 Assistenten:
 
 1. Listar USB- och evdev-läsare  
 2. Stoppar tillfälligt `vkc-kiosk` om den håller läsaren  
-3. Låter dig blippa ett kort (eller klistra in rådata)  
-4. Visar alla kombinationer av `FORMAT` / `BYTE_ORDER` / `NIBBLE_ORDER` / `hexUidChars`  
-5. Sparar vald kombination + läsare till `config.json` (backup som `config.json.bak`)
+3. Blippa kort (eller klistra in rådata)  
+4. Visar kombinationer av `FORMAT` / `BYTE_ORDER` / `NIBBLE_ORDER` / `hexUidChars`  
+5. Sparar till `config.json` (även `config.json.bak`)
 
-Ange gärna det förväntade medlems-ID:t (t.ex. `1443137877`) så markeras matchande rader automatiskt.
+Ange gärna förväntat medlems-ID (t.ex. `1443137877`) så rätt rad markeras.
 
-### Manuell config (valfritt)
+### Typisk YAROGNTEC-config
 
-```bash
-vkc-kiosk config
-# eller: nano ~/vkc-kiosk/config.json
-```
-
-YAROGNTEC — typisk `CARD_PROCESSING` som ger t.ex. rå `00000055984065` → `1443137877`:
+Rå `'00000055984065'` → `'1443137877'`:
 
 ```json
 "READER": {
   "backend": "usb",
   "usbVendor": "0xffff",
   "usbProduct": "0x0035",
-  "nameContains": "USB Reader",
+  "nameContains": "SDZNKJLTD USB Reader",
   "grab": true
 },
 "CARD_PROCESSING": {
@@ -123,34 +113,66 @@ YAROGNTEC — typisk `CARD_PROCESSING` som ger t.ex. rå `00000055984065` → `1
 }
 ```
 
-`hexUidChars` är UID-längden i hex-tecken (4-byte MIFARE = 8). Ledande `00` från läsarpadding tas bort bara så länge strängen är längre än så — äkta nollor i UID (`00000001`) behålls.
+`hexUidChars` = UID-längd i hex-tecken (4-byte MIFARE = 8). Ledande `00` från läsarpadding trimmas bara om strängen är längre än så.
+
+Delad logik: `card_convert.py`.
 
 ---
 
-## 3. Övrig config
+## 3. Config (`config.json`)
 
-### Google Apps Script-URL:er
+- Trackas **inte** i git (se `.gitignore`)
+- Mall: `config.example.json`
+- Redigera: `vkc-kiosk config` eller `nano ~/vkc-kiosk/config.json`
+- **Efter varje manuell ändring:** `vkc-kiosk save-config`  
+  (speglar till `~/.config/vkc-kiosk/` utanför repot)
 
-I `config.json`:
+### Google Apps Script
 
 | Nyckel | Innehåll |
 |--------|----------|
-| `DATA_URL` | Medlemslista (söks på `Kortnummer`) |
+| `DATA_URL` | Medlemslista (fält `Kortnummer`) |
 | `TEN_VISIT_DATA_URL` | 10-kort / klippkort |
 | `LOG_URL` | Incheckningslogg |
 | `GAS_UPDATE_URL_BASE` | Klippning av 10-kort |
 
-Kiosken cachear listorna lokalt (standard ca 30 min). Efter att du lagt till ett kort i huvudsystemet:
+### Cache
+
+| Nyckel | Standard | Betydelse |
+|--------|----------|-----------|
+| `CACHE.updateIntervalSeconds` | `1800` | Omhämtning ca var 30:e min |
+| `CACHE.fetchTimeoutSeconds` | `30` | Timeout mot GAS |
+| `CACHE.userAgent` | `Mifare Reader Backend` | HTTP User-Agent |
+
+Före första lyckade hämtningen visas väntetext om kort blippas. Tvinga omhämtning:
 
 ```bash
 curl -s http://127.0.0.1:8081/api/cache/refresh
 curl -s http://127.0.0.1:8081/api/cache/lookup/1443137877
-# eller: sudo systemctl restart vkc-kiosk
 ```
 
-### Slides / karusell (övre skärmytan)
+### Timeouts / UI
 
-Enklast: `vkc-kiosk slides` (webbadress, ordning, visningstid, **refresh-intervall**).
+| Nyckel | Standard | Betydelse |
+|--------|----------|-----------|
+| `TIMEOUTS.statusDisplaySeconds` | `3` | Hur länge vanlig status visas |
+| `TIMEOUTS.lastClipOkSeconds` | `3` | Fas 1 vid sista 10-kortklipp (“Klipp OK!”) |
+| `TIMEOUTS.lastClipReturnSeconds` | `5` | Fas 2 (“Lämna in kortet i reception”) |
+| `TIMEOUTS.logRequestSeconds` | `5` | Timeout logg-anrop |
+| `TIMEOUTS.clipRequestSeconds` | `10` | Timeout klipp-anrop |
+| `TIMEOUTS.sseHeartbeatSeconds` | `20` | SSE-heartbeat |
+
+### 10-kort / klippkort
+
+- Anonyma 10-kort visar inte placeholder-namn (“Klippkorts-användare”)
+- Slut / 0 kvar: uppmaning att lämna in kortet i reception
+- Sista klippet (1→0): orange status i två faser (OK → lämna in) + varningsljud om `static/warning.mp3` finns
+
+### Slides / karusell
+
+```bash
+vkc-kiosk slides
+```
 
 ```json
 "KIOSK": {
@@ -159,18 +181,11 @@ Enklast: `vkc-kiosk slides` (webbadress, ordning, visningstid, **refresh-interva
   "reloadIntervalSeconds": 300,
   "slides": [
     {
-      "id": "live-stats",
-      "title": "Live",
-      "url": "https://...",
-      "durationSeconds": 30,
-      "reloadIntervalSeconds": 120
-    },
-    {
-      "id": "info",
-      "title": "Info",
-      "url": "https://...",
-      "durationSeconds": 20,
-      "reloadIntervalSeconds": 0
+      "id": "bl-leder",
+      "title": "Blå leder",
+      "url": "https://wallflow.vastervikclimbing.se/display.html#blå",
+      "durationSeconds": 15,
+      "reloadIntervalSeconds": 900
     }
   ]
 }
@@ -178,202 +193,75 @@ Enklast: `vkc-kiosk slides` (webbadress, ordning, visningstid, **refresh-interva
 
 | Fält | Betydelse |
 |------|-----------|
-| `durationSeconds` | Hur länge sidan visas i karusellen |
+| `durationSeconds` | Visningstid i karusellen |
 | `KIOSK.reloadIntervalSeconds` | Standard-refresh om slide saknar eget värde |
-| `slides[].reloadIntervalSeconds` | Egen refresh för sidan (sekunder) |
-| `…: 120` | Hämta om tidigast var 2:e minut när sidan visas |
-| `…: 0` | Aldrig omhämtning (statiskt tills kiosk-omstart) |
-| saknas | Använd global standard |
-| `reloadOnShow: true` | Gammalt läge: ladda om vid varje bildbyte |
+| `slides[].reloadIntervalSeconds` | Egen refresh (sekunder); `0` = aldrig |
+| `reloadOnShow: true` | Gammalt läge: ladda om vid varje byte |
 
-Incheckningen ligger kvar längst ner. Sidor byts automatiskt — ingen Space behövs.
+**Hash-URL:er** (`#blå`, `#grön`, …) stöds: URL:er skickas via JSON till webbläsaren så fragmentet bevaras. Refresh-parametern läggs **före** `#`.
+
+Iframes behålls mellan varv (`reloadOnShow: false`) — bra för CPU.
 
 ---
 
-## 4. Starta om
+## 4. Starta / kontrollera
 
 ```bash
 vkc-kiosk restart
-```
-
-Efter `setup-reader` eller första install: **reboot** så cmdline / grupper tar effekt:
-
-```bash
-sudo reboot
-```
-
----
-
-## 5. Kontrollera
-
-```bash
 vkc-kiosk status
 curl -s http://127.0.0.1:8081/healthz
 ```
 
+Efter `setup-reader` / första install: `sudo reboot`.
+
 Förväntat:
 
-- API svarar på porten i `config.json` (standard `8081`)
-- Chromium i fullskärm med slides + incheckning
-- Kortblipp ger status i den nedre ytan
-
-Loggar:
+- API på porten i config (standard `8081`)
+- Chromium fullskärm: slides + incheckning
+- Kortblipp → status i nedre ytan
 
 ```bash
 vkc-kiosk logs
-journalctl -u vkc-kiosk -f
-```
-
-Vid kortblipp ska du kunna se rader i stil med:
-
-```text
-KORT RÅDATA: '00000055984065' ...
-KORT EFTER KONVERT: '1443137877' ...
+# Exempel i loggen:
+# KORT RÅDATA: '00000055984065' ...
+# KORT EFTER KONVERT: '1443137877' ...
 ```
 
 ---
 
-## 6. Ljud (valfritt)
+## 5. Ljud (valfritt)
 
 Lägg i `~/vkc-kiosk/static/`:
 
 - `success.mp3`
 - `failure.mp3`
-- `warning.mp3`
+- `warning.mp3` (sista 10-kortklipp)
 
 ---
 
-## Verktyg — `vkc-kiosk`
+## 6. WiFi / nyckelring (GUI)
 
-Kommandot installeras som `/usr/local/bin/vkc-kiosk` och pekar på `scripts/vkc-kiosk.sh`.  
-Visa inbyggd hjälp: `vkc-kiosk` / `vkc-kiosk help`.
+WiFi sköts **inte** av `vkc-kiosk` — använd skrivbordets nätverksmeny.
 
-### Översikt
+### Skapa login-nyckelring (om bara Chromium syns)
 
-| Kommando | sudo? | Vad det gör |
-|----------|-------|-------------|
-| `status` | nej | Status för `vkc-kiosk` + `vkc-kiosk-browser` och `GET /healthz` |
-| `start` | ja | Starta API-tjänsten |
-| `stop` | ja | Stoppa browser + API |
-| `restart` | ja | Starta om API (+ browser om den finns) och visa status |
-| `logs` | ja | `journalctl -f` för API och browser |
-| `devices` | nej | Lista kortläsare (evdev/USB) + `/api/input-devices` |
-| `pull` | nej | `git pull`; sparar `config.json` i `~/.config/vkc-kiosk/` **utanför** repot och återställer efteråt. Stashar bara tracked kod (aldrig `-u`) |
-| `update` | delvis | `pull` + `pip install -r requirements.txt` + `install.sh`/`restart` |
-| `config` | nej | Öppna `config.json` i `$EDITOR` (standard `nano`) |
-| `save-config` | nej | Spegla nuvarande (bra) `config.json` → `~/.config/vkc-kiosk/` — kör efter manuell edit |
-| `restore-config` | nej | Återställ `config.json` från `~/.config/vkc-kiosk/` |
-| `url` | nej | Skriv ut `http://127.0.0.1:<port>/` |
-| `setup-reader` | **ja** | YAROGNTEC/SDZNKJLTD (`ffff:0035`): cmdline, udev, quirk — **reboot efteråt** |
-| `configure-reader` | nej* | Interaktiv läsare + kortformat → `config.json` (*stoppar tjänsten tillfälligt) |
-| `slides` | nej | Hantera karusell (`KIOSK.slides`): URL, ordning, `durationSeconds`, `reloadIntervalSeconds`. Alias: `karusell` |
+Chromium har egen nyckelring. WiFi behöver en **login**-nyckelring:
 
-`config.json` ligger **inte** i git. Mall vid ny install: `config.example.json`.  
-WiFi hanteras **inte** av `vkc-kiosk` — använd skrivbordets nätverks-GUI / nyckelring.
+1. `sudo apt install -y seahorse gnome-keyring`
+2. Öppna **Lösenord och nycklar** (`seahorse`)
+3. **+** → Password keyring → namn `login`
+4. **Lösenord: lämna tomt** (auto-upplås vid autologin)
+5. Högerklicka → **Ange som standard**
+6. Anslut WiFi via GUI och spara lösenordet
+7. Reboot
 
-### Exempel
+### Om login redan finns
 
-```bash
-# Drift
-vkc-kiosk status
-vkc-kiosk restart
-vkc-kiosk logs
+Seahorse → **Inloggning** → **Ändra lösenord** → nytt lösenord **tomt**.
 
-# Hämta kod (skyddar din config)
-vkc-kiosk pull
-vkc-kiosk update
+Valfritt PAM (samma lösen som användarkonto): se äldre anteckningar i git-historik; på kiosk med autologin är **tom login-nyckelring** mer pålitligt.
 
-# Kortläsare
-sudo vkc-kiosk setup-reader    # bara YAROGNTEC — sedan: sudo reboot
-vkc-kiosk configure-reader
-vkc-kiosk devices
-
-# Karusell / slides
-vkc-kiosk slides
-
-# Config
-vkc-kiosk config
-vkc-kiosk url
-```
-
-### Script bakom kommandona
-
-| CLI | Script |
-|-----|--------|
-| `setup-reader` | `scripts/setup-yarogntec-reader.sh` → `deploy/install-usb-reader-quirk.sh` |
-| `configure-reader` | `scripts/configure-card-reader.py` |
-| `slides` | `scripts/manage-slides.py` |
-| `devices` | `scripts/list_input_devices.py` (+ API) |
-
-### API-hjälp
-
-| URL | Syfte |
-|-----|--------|
-| `/healthz` | Hälsokoll + cachestorlek |
-| `/api/cache/refresh` | Tvinga omhämtning från GAS |
-| `/api/cache/lookup/<id>` | Finns kortet i cachen? |
-| `/api/input-devices` | Lista evdev-enheter |
-
----
-
-## Felsökning
-
-**Kortläsaren reagerar inte**
-
-1. `vkc-kiosk devices` / `configure-reader` — rätt läsare?
-2. YAROGNTEC: har du kört `setup-reader` + reboot?
-3. `groups` — ska innehålla `input` (evdev) / `plugdev` (usb)
-4. `vkc-kiosk logs` — fel om saknad enhet / behörighet?
-5. Stoppa API och testa: `sudo systemctl stop vkc-kiosk` sedan `configure-reader`
-
-**Kortet har fel antal siffror / fel ID**
-
-```bash
-vkc-kiosk configure-reader
-```
-
-Ange det ID som står i medlemslistan och välj den kombination som matchar.
-
-**Kortet hittas inte**
-
-1. Finns rätt nummer i GAS-medlemslistan (`DATA_URL`)?
-2. Uppdatera cache: `curl -s http://127.0.0.1:8081/api/cache/refresh`
-3. Kontrollera: `curl -s http://127.0.0.1:8081/api/cache/lookup/<id>`
-
-**Tom/vit skärm i Chromium**
-
-1. `curl -s --max-time 3 http://127.0.0.1:8081/healthz`
-2. `sudo systemctl restart vkc-kiosk vkc-kiosk-browser`
-3. Grafisk session / autologin aktiv?
-
-**Chromium öppnar nya flikar i loop**
-
-```bash
-sudo systemctl stop vkc-kiosk-browser
-rm -f ~/.config/autostart/vkc-kiosk.desktop
-pkill -f vkc-kiosk-chromium || true
-cd ~/vkc-kiosk && git pull && sudo SKIP_APT=1 ./install.sh
-```
-
-**USB `HC died` / iface-1-fel (YAROGNTEC)**
-
-```bash
-sudo vkc-kiosk setup-reader
-sudo reboot
-```
-
-Kontrollera efter reboot:
-
-```bash
-cat /proc/cmdline | tr ' ' '\n' | grep -E 'authorized_default|usbhid.quirks'
-journalctl -t vkc-kiosk -n 20
-```
-
-**WiFi / nyckelring (via GUI)**
-
-WiFi sköts via skrivbordets nätverksinställningar — **inte** av `vkc-kiosk`.
-
-Rensa gamla profiler vid behov, skapa nyckelring, anslut via GUI:
+Rensa ev. gamla automatiska wifi-filer:
 
 ```bash
 sudo rm -f /etc/netplan/99-vkc-kiosk-wifi.yaml
@@ -381,45 +269,134 @@ sudo rm -f /etc/NetworkManager/system-connections/vkc-kiosk-wifi.nmconnection
 sudo nmcli connection reload
 ```
 
-### Nyckelring som låses upp vid autologin
+---
 
-Enklast och vanligast på kiosk: **tomt lösenord på login-nyckelringen** (då låses den upp automatiskt).
+## Verktyg — `vkc-kiosk`
 
-1. Installera Seahorse om det saknas: `sudo apt install -y seahorse`
-2. Öppna **Lösenord och nycklar** (Seahorse) → högerklicka **Inloggning** / **Login** → **Ändra lösenord**
-3. Ange nuvarande nyckelringslösen → **lämna nya lösenordet tomt** → bekräfta varningen
-4. Reboot. WiFi-lösen som sparats i nyckelringen ska gälla utan fråga.
+Installeras som `/usr/local/bin/vkc-kiosk` → `scripts/vkc-kiosk.sh`.  
+Hjälp: `vkc-kiosk` / `vkc-kiosk help`.
 
-Alternativ (samma lösen som användarkonto + PAM):
+| Kommando | sudo? | Vad det gör |
+|----------|-------|-------------|
+| `status` | nej | systemd + `/healthz` |
+| `start` / `stop` / `restart` | ja | Styra API (+ browser) |
+| `logs` | ja | `journalctl -f` |
+| `devices` | nej | Lista läsare + API |
+| `pull` | nej | `git pull`; skyddar **nuvarande** `config.json` via `/tmp`-kopia; speglar även till `~/.config/vkc-kiosk/`; stashar bara **tracked** filer |
+| `update` | delvis | `pull` + pip + `install.sh` / restart |
+| `config` | nej | Öppna `config.json` |
+| `save-config` | nej | Spegla nuvarande config → `~/.config/vkc-kiosk/` |
+| `restore-config` | nej | Återställ från `~/.config/vkc-kiosk/` |
+| `url` | nej | Lokal URL |
+| `setup-reader` | **ja** | YAROGNTEC systemfix + reboot |
+| `configure-reader` | nej* | Läsare + format (*stoppar tjänsten tillfälligt) |
+| `slides` / `karusell` | nej | Hantera karusell |
+
+### Script bakom CLI
+
+| CLI | Script |
+|-----|--------|
+| `setup-reader` | `scripts/setup-yarogntec-reader.sh` → `deploy/install-usb-reader-quirk.sh` |
+| `configure-reader` | `scripts/configure-card-reader.py` (+ `card_convert.py`) |
+| `slides` | `scripts/manage-slides.py` |
+| `devices` | `scripts/list_input_devices.py` |
+
+### Rekommenderad daglig uppdatering
 
 ```bash
-# Säkerställ gnome-keyring
-sudo apt install -y gnome-keyring libpam-gnome-keyring
-
-# För lightdm-autologin (vanligt på Pi OS) — lägg till om raderna saknas:
-# /etc/pam.d/lightdm-autologin
-#   auth    optional  pam_gnome_keyring.so
-#   session optional  pam_gnome_keyring.so auto_start
-#
-# /etc/pam.d/lightdm
-#   auth    optional  pam_gnome_keyring.so
-#   session optional  pam_gnome_keyring.so auto_start
+vkc-kiosk save-config    # om du nyss editerat config
+vkc-kiosk pull
+vkc-kiosk restart
 ```
 
-Sätt nyckelringens lösenord **identiskt** med användarens inloggningslösen. Vid autologin utan lösenordsruta fungerar tom nyckelringslösenord mer pålitligt.
+### API
 
-**Pi Connect**  
-Chromium körs med `--start-fullscreen` (inte hård `--kiosk`). Lämna med F11 eller Alt+Tab.
+| URL | Syfte |
+|-----|--------|
+| `/` | Hel kiosk |
+| `/checkin` | Bara incheckning |
+| `/stream` | SSE |
+| `/healthz` | Hälsokoll + cache |
+| `/api/cache/refresh` | Omhämtning GAS |
+| `/api/cache/lookup/<id>` | Uppslag i cache |
+| `/api/input-devices` | evdev-lista |
 
-**`git pull` / fel eller gammal `config.json`**
+---
 
-Använd **alltid** `vkc-kiosk pull`. Efter manuell edit:
+## Repostruktur
+
+| Sökväg | Roll |
+|--------|------|
+| `app.py`, `wsgi.py` | Flask + Gunicorn |
+| `card_convert.py` | Kortkonvertering |
+| `reader_usb.py` | PyUSB-läsning |
+| `config.example.json` | Mall (ersätter inte din lokala config) |
+| `templates/kiosk.html` | Karusell (JSON-URL:er, hash-stöd) |
+| `templates/checkin.html` | Inchecknings-UI |
+| `deploy/` | systemd, udev, browser-start, USB-quirk |
+| `scripts/` | CLI och assistenter |
+| `static/` | Valfria ljudfiler |
+| `install.sh` / `uninstall.sh` | Install / avinstallera |
+
+---
+
+## Felsökning
+
+**Kortläsaren reagerar inte**
+
+1. `vkc-kiosk devices` / `configure-reader`
+2. YAROGNTEC: `setup-reader` + reboot?
+3. `groups` ska innehålla `input` / `plugdev`
+4. `vkc-kiosk logs`
+5. `sudo systemctl stop vkc-kiosk` sedan `configure-reader`
+
+**Fel kort-ID / antal siffror** → `vkc-kiosk configure-reader` med förväntat ID från medlemslistan.
+
+**Kortet hittas inte**
 
 ```bash
-vkc-kiosk save-config    # spegla DIN nuvarande fil till ~/.config/vkc-kiosk/
+curl -s http://127.0.0.1:8081/api/cache/refresh
+curl -s http://127.0.0.1:8081/api/cache/lookup/<id>
 ```
 
-Pull återställer bara den kopia som togs **i samma pull** (inte en gammal hem-backup).
+**Tom/vit skärm**
+
+```bash
+curl -s --max-time 3 http://127.0.0.1:8081/healthz
+sudo systemctl restart vkc-kiosk vkc-kiosk-browser
+```
+
+**Chromium öppnar flikar i loop**
+
+```bash
+sudo systemctl stop vkc-kiosk-browser
+rm -f ~/.config/autostart/vkc-kiosk.desktop
+pkill -f vkc-kiosk-chromium || true
+cd ~/vkc-kiosk && vkc-kiosk pull && sudo SKIP_APT=1 ./install.sh
+```
+
+**USB `HC died` (YAROGNTEC)**
+
+```bash
+sudo vkc-kiosk setup-reader && sudo reboot
+cat /proc/cmdline | tr ' ' '\n' | grep -E 'authorized_default|usbhid.quirks'
+```
+
+**`config.json` fel / borta**
+
+```bash
+vkc-kiosk restore-config
+# eller: cp -a ~/.config/vkc-kiosk/config.json ~/vkc-kiosk/config.json
+ls -lt ~/.config/vkc-kiosk/
+```
+
+Använd **alltid** `vkc-kiosk pull`. Efter manuell edit: `vkc-kiosk save-config`.
+
+**WallFlow-färg (`#blå` m.m.) fel sida** → uppdatera kod (`vkc-kiosk pull`) och hårdstarta browser. URL:er ska komma via JSON, inte trasiga HTML-attribut.
+
+**Pi Connect** — fullskärm (`--start-fullscreen`), lämna med F11 / Alt+Tab.
+
+**Hög CPU** — normalt med Chromium + flera iframes. Längre `reloadIntervalSeconds` sänker lasten. Temp ~70 °C under last är ofta OK; oro runt ~80–85 °C.
 
 ---
 

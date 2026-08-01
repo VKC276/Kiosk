@@ -145,16 +145,33 @@ bootstrap_repo() {
 }
 
 ensure_config() {
-  # config.json trackas inte i git — kopiera exempel vid första installation.
-  if [[ ! -f "${KIOSK_DIR}/config.json" ]]; then
-    if [[ -f "${KIOSK_DIR}/config.example.json" ]]; then
-      log "Skapar config.json från config.example.json (redigera GAS-URL:er m.m.)"
-      sudo -u "${KIOSK_USER}" cp -a "${KIOSK_DIR}/config.example.json" "${KIOSK_DIR}/config.json"
-    else
-      die "Saknar både config.json och config.example.json i ${KIOSK_DIR}"
-    fi
-  else
+  # config.json trackas inte i git. Först: återställ från ~/.config/vkc-kiosk
+  # om filen saknas (skydd mot tidigare pull-buggar). Annars example endast
+  # vid helt ny installation.
+  local user_home backup_cfg
+  user_home="$(getent passwd "${KIOSK_USER}" | cut -d: -f6)"
+  user_home="${user_home:-/home/${KIOSK_USER}}"
+  backup_cfg="${user_home}/.config/vkc-kiosk/config.json"
+
+  if [[ -f "${KIOSK_DIR}/config.json" ]]; then
     log "Behåller befintlig config.json"
+    # Spegla till skyddad backup utanför repot
+    sudo -u "${KIOSK_USER}" mkdir -p "${user_home}/.config/vkc-kiosk"
+    sudo -u "${KIOSK_USER}" cp -a "${KIOSK_DIR}/config.json" "${backup_cfg}"
+    return
+  fi
+
+  if [[ -f "${backup_cfg}" ]]; then
+    log "Återställer config.json från ${backup_cfg}"
+    sudo -u "${KIOSK_USER}" cp -a "${backup_cfg}" "${KIOSK_DIR}/config.json"
+    return
+  fi
+
+  if [[ -f "${KIOSK_DIR}/config.example.json" ]]; then
+    log "Skapar config.json från config.example.json (redigera GAS-URL:er m.m.)"
+    sudo -u "${KIOSK_USER}" cp -a "${KIOSK_DIR}/config.example.json" "${KIOSK_DIR}/config.json"
+  else
+    die "Saknar både config.json och config.example.json i ${KIOSK_DIR}"
   fi
 }
 

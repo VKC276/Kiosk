@@ -55,9 +55,10 @@ Efter installation: `vkc-kiosk help` (eller `vkc-kiosk` utan argument).
 | `start` / `stop` / `restart` | Styra tjänsterna |
 | `logs` | Följ journal-loggar (`vkc-kiosk` + browser) |
 | `devices` | Lista input-/USB-läsare |
-| `pull` | `git pull` med skydd av lokal `config.json` (stashar övriga lokala ändringar) |
+| `pull` | `git pull` med config-backup i `~/.config/vkc-kiosk/` |
 | `update` | `pull` + pip + ominstallation/restart |
 | `config` | Öppna `config.json` i `$EDITOR` |
+| `restore-config` | Återställ `config.json` från `~/.config/vkc-kiosk/` |
 | `url` | Skriv ut lokal kiosk-URL |
 | `setup-reader` | **YAROGNTEC/SDZNKJLTD** systemfix (sudo + reboot) |
 | `configure-reader` | Välj läsare + kortformat → skriver `config.json` |

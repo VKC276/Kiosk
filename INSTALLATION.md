@@ -258,9 +258,10 @@ Visa inbyggd hjälp: `vkc-kiosk` / `vkc-kiosk help`.
 | `restart` | ja | Starta om API (+ browser om den finns) och visa status |
 | `logs` | ja | `journalctl -f` för API och browser |
 | `devices` | nej | Lista kortläsare (evdev/USB) + `/api/input-devices` |
-| `pull` | nej | `git pull` på aktuell branch; **behåller** `config.json` (backup `config.json.localbak`); stashar övriga lokala filändringar |
+| `pull` | nej | `git pull`; sparar `config.json` i `~/.config/vkc-kiosk/` **utanför** repot och återställer efteråt. Stashar bara tracked kod (aldrig `-u`) |
 | `update` | delvis | `pull` + `pip install -r requirements.txt` + `install.sh`/`restart` |
 | `config` | nej | Öppna `config.json` i `$EDITOR` (standard `nano`) |
+| `restore-config` | nej | Återställ `config.json` från `~/.config/vkc-kiosk/` |
 | `url` | nej | Skriv ut `http://127.0.0.1:<port>/` |
 | `setup-reader` | **ja** | YAROGNTEC/SDZNKJLTD (`ffff:0035`): cmdline, udev, quirk — **reboot efteråt** |
 | `configure-reader` | nej* | Interaktiv läsare + kortformat → `config.json` (*stoppar tjänsten tillfälligt) |
@@ -393,16 +394,17 @@ Därefter: nätverksmeny → `Mobile-bridge_24` → ange lösenord → bocka i a
 **Pi Connect**  
 Chromium körs med `--start-fullscreen` (inte hård `--kiosk`). Lämna med F11 eller Alt+Tab.
 
-**`git pull` blockeras av lokala ändringar**
+**`git pull` / försvunnen `config.json`**
 
-Använd `vkc-kiosk pull` (stashar lokala filändringar, behåller `config.json`).
-Manuellt:
+Använd **alltid** `vkc-kiosk pull` — inte rå `git pull`, och **inte** `git stash -u` (det kunde stasha bort config + backup).
+
+Backup utanför repot: `~/.config/vkc-kiosk/config.json`
 
 ```bash
-cp -a config.json config.json.localbak
-git stash push -u -m "pi local before pull"
-git pull --ff-only
-cp -a config.json.localbak config.json
+vkc-kiosk restore-config
+# eller:
+cp -a ~/.config/vkc-kiosk/config.json ~/vkc-kiosk/config.json
+ls -lt ~/.config/vkc-kiosk/
 ```
 
 ---

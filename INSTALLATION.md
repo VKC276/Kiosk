@@ -381,8 +381,18 @@ sudo vkc-kiosk fix-wifi
 sudo vkc-kiosk fix-wifi 'MittWifi' 'losenord!'
 ```
 
-På Ubuntu/Pi med **netplan** sparas profilen i `/etc/netplan/99-vkc-kiosk-wifi.yaml` (inte nyckelringen).  
-På ren NetworkManager: `/etc/NetworkManager/system-connections/`.
+Skriver permanent profil **`vkc-kiosk-wifi`** till  
+`/etc/NetworkManager/system-connections/vkc-kiosk-wifi.nmconnection`  
+(med PSK i filen, `autoconnect-priority=999`). Tar bort den gamla netplan-filen  
+`/etc/netplan/99-vkc-kiosk-wifi.yaml` om den finns (den var opålitlig efter reboot).
+
+Kontroll efteråt:
+
+```bash
+nmcli -t -f DEVICE,STATE,CONNECTION device status
+ping -c2 1.1.1.1
+sudo nmcli -s -g 802-11-wireless-security.psk connection show vkc-kiosk-wifi | wc -c
+```
 
 Undvik att spara nätet via skrivbordsdialogen efteråt.
 

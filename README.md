@@ -58,6 +58,7 @@ Efter installation: `vkc-kiosk help` (eller `vkc-kiosk` utan argument).
 | `pull` | `git pull` med config-backup i `~/.config/vkc-kiosk/` |
 | `update` | `pull` + pip + ominstallation/restart |
 | `config` | Öppna `config.json` i `$EDITOR` |
+| `save-config` | Spegla nuvarande config → `~/.config/vkc-kiosk/` |
 | `restore-config` | Återställ `config.json` från `~/.config/vkc-kiosk/` |
 | `url` | Skriv ut lokal kiosk-URL |
 | `setup-reader` | **YAROGNTEC/SDZNKJLTD** systemfix (sudo + reboot) |

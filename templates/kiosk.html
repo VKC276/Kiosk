@@ -138,8 +138,8 @@
   <script>
     // reloadOnShow=true: gamla beteendet (ladda om vid varje byte).
     // Annars behålls iframe-innehåll; omhämtning bara om reloadIntervalSeconds gått.
-    const RELOAD_ON_SHOW = {{ 'true' if reload_on_show else 'false' }};
-    const RELOAD_INTERVAL_MS = {{ reload_interval_ms }};
+    const RELOAD_ON_SHOW = {{ 'true' if reload_on_show|default(false) else 'false' }};
+    const RELOAD_INTERVAL_MS = {{ reload_interval_ms|default(300000) }};
     const slides = Array.from(document.querySelectorAll('.rotator-slide'));
     const timerBar = document.getElementById('slide-timer-bar');
     let currentSlideIndex = 0;
@@ -158,11 +158,11 @@
     }
 
     function slideReloadIntervalMs(slide) {
-      const raw = parseInt(slide.dataset.reloadIntervalSec, 10);
-      if (Number.isFinite(raw)) {
-        return raw > 0 ? raw * 1000 : 0;
-      }
-      return RELOAD_INTERVAL_MS;
+      const attr = slide.getAttribute('data-reload-interval-sec');
+      if (attr === null || attr === '') return RELOAD_INTERVAL_MS;
+      const raw = parseInt(attr, 10);
+      if (!Number.isFinite(raw)) return RELOAD_INTERVAL_MS;
+      return raw > 0 ? raw * 1000 : 0;
     }
 
     function markLoaded(iframe) {
@@ -199,7 +199,7 @@
       if (!iframe) return null;
       const base = canonicalSlideUrl(slide, iframe);
       if (!base) return iframe;
-      // iframe.src som property tappar ofta hash vid avläsning — lita på data-base.
+      // Lita på data-base (iframe.src tappar hash vid avläsning).
       if (iframe.dataset.loadedFromBase !== '1') {
         iframe.src = base;
         iframe.dataset.loadedFromBase = '1';
@@ -218,24 +218,22 @@
     }
 
     function maybeRefresh(slide, iframe) {
-      if (!iframe || !iframe.getAttribute('src')) return;
+      if (!iframe) return;
       if (RELOAD_ON_SHOW) {
-        refreshIframe(iframe);
+        refreshIframe(iframe, slide);
         return;
       }
       const intervalMs = slideReloadIntervalMs(slide);
       if (!intervalMs) return; // 0 = behåll tills kiosken laddas om
       const last = parseInt(iframe.dataset.lastLoadedAt || '0', 10);
       if (!last || (Date.now() - last) >= intervalMs) {
-        refreshIframe(iframe);
+        refreshIframe(iframe, slide);
       }
     }
 
     function prefetchNeighbors(index) {
       if (slides.length < 2) return;
-      const next = slides[(index + 1) % slides.length];
-      ensureSrc(next);
-      // Lätt prefetch även av sidan efter, så statistik ofta redan sitter i minnet
+      ensureSrc(slides[(index + 1) % slides.length]);
       if (slides.length > 2) {
         ensureSrc(slides[(index + 2) % slides.length]);
       }
@@ -271,23 +269,27 @@
     }
 
     function setSlide(index) {
-      if (!slides.length) return;
-      slides[currentSlideIndex]?.classList.remove('active');
-      currentSlideIndex = ((index % slides.length) + slides.length) % slides.length;
-      const slide = slides[currentSlideIndex];
-      slide.classList.add('active');
+      try {
+        if (!slides.length) return;
+        slides[currentSlideIndex]?.classList.remove('active');
+        currentSlideIndex = ((index % slides.length) + slides.length) % slides.length;
+        const slide = slides[currentSlideIndex];
+        slide.classList.add('active');
 
-      const iframe = ensureSrc(slide);
-      maybeRefresh(slide, iframe);
-      prefetchNeighbors(currentSlideIndex);
+        const iframe = ensureSrc(slide);
+        maybeRefresh(slide, iframe);
+        prefetchNeighbors(currentSlideIndex);
 
-      const durationMs = getDurationMs(currentSlideIndex);
-      startProgress(durationMs);
+        const durationMs = getDurationMs(currentSlideIndex);
+        startProgress(durationMs);
 
-      keepCheckinFocus();
-      clearTimeout(slideTimer);
-      if (slides.length > 1) {
-        slideTimer = setTimeout(() => setSlide(currentSlideIndex + 1), durationMs);
+        keepCheckinFocus();
+        clearTimeout(slideTimer);
+        if (slides.length > 1) {
+          slideTimer = setTimeout(() => setSlide(currentSlideIndex + 1), durationMs);
+        }
+      } catch (err) {
+        console.error('Karusell-fel i setSlide:', err);
       }
     }
 
@@ -300,14 +302,19 @@
     }, true);
 
     document.addEventListener('DOMContentLoaded', () => {
-      keepCheckinFocus();
-      if (slides.length > 0) {
-        // Förladda första + nästa direkt så karusellen inte "blinkar" datahämtning
-        ensureSrc(slides[0]);
-        prefetchNeighbors(0);
-        setSlide(0);
+      try {
+        keepCheckinFocus();
+        console.log('Karusell: ' + slides.length + ' sidor, reloadOnShow=' + RELOAD_ON_SHOW +
+          ', defaultRefreshMs=' + RELOAD_INTERVAL_MS);
+        if (slides.length > 0) {
+          ensureSrc(slides[0]);
+          prefetchNeighbors(0);
+          setSlide(0);
+        }
+        setInterval(keepCheckinFocus, 5000);
+      } catch (err) {
+        console.error('Karusell kunde inte starta:', err);
       }
-      setInterval(keepCheckinFocus, 5000);
     });
   </script>
 </body>

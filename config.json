@@ -39,7 +39,7 @@
       "path": "/checkin",
       "heightPercent": 20
     },
-    "reloadOnShow": true,
+    "reloadOnShow": false,
     "slides": [
       {
         "id": "top-sends",
@@ -65,6 +65,7 @@
         "url": "https://wallflow.vastervikclimbing.se/display.html",
         "durationSeconds": 60
       }
-    ]
+    ],
+    "reloadIntervalSeconds": 300
   }
 }

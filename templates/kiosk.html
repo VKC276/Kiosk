@@ -105,13 +105,14 @@
         class="rotator-slide{% if loop.first %} active{% endif %}"
         data-duration-ms="{{ slide.durationMs }}"
         data-url="{{ slide.url }}"
+        {% if slide.reloadIntervalSeconds is not none %}data-reload-interval-sec="{{ slide.reloadIntervalSeconds }}"{% endif %}
         id="slide-{{ slide.id }}"
       >
         <iframe
           id="iframe-{{ slide.id }}"
           title="{{ slide.title }}"
           tabindex="-1"
-          loading="lazy"
+          loading="{% if loop.first or loop.index0 < 2 %}eager{% else %}lazy{% endif %}"
           data-base="{{ slide.url }}"
           {% if loop.first %}src="{{ slide.url }}"{% endif %}
         ></iframe>
@@ -135,7 +136,10 @@
   </div>
 
   <script>
+    // reloadOnShow=true: gamla beteendet (ladda om vid varje byte).
+    // Annars behålls iframe-innehåll; omhämtning bara om reloadIntervalSeconds gått.
     const RELOAD_ON_SHOW = {{ 'true' if reload_on_show else 'false' }};
+    const RELOAD_INTERVAL_MS = {{ reload_interval_ms }};
     const slides = Array.from(document.querySelectorAll('.rotator-slide'));
     const timerBar = document.getElementById('slide-timer-bar');
     let currentSlideIndex = 0;
@@ -153,22 +157,60 @@
       }
     }
 
+    function slideReloadIntervalMs(slide) {
+      const raw = parseInt(slide.dataset.reloadIntervalSec, 10);
+      if (Number.isFinite(raw)) {
+        return raw > 0 ? raw * 1000 : 0;
+      }
+      return RELOAD_INTERVAL_MS;
+    }
+
+    function markLoaded(iframe) {
+      if (iframe) iframe.dataset.lastLoadedAt = String(Date.now());
+    }
+
     function ensureSrc(slide) {
       const iframe = slide.querySelector('iframe');
       if (!iframe) return null;
       const base = iframe.getAttribute('data-base') || slide.dataset.url;
       if (!iframe.getAttribute('src')) {
         iframe.src = base;
+        markLoaded(iframe);
       }
       return iframe;
     }
 
     function refreshIframe(iframe) {
-      if (!iframe || !RELOAD_ON_SHOW) return;
-      const base = iframe.getAttribute('data-base') || iframe.src.split('?')[0].split('&')[0];
-      const clean = base.replace(/([?&])refresh=\d+/g, '').replace(/[?&]$/, '');
+      if (!iframe) return;
+      const base = iframe.getAttribute('data-base') || iframe.src;
+      const clean = String(base).replace(/([?&])refresh=\d+/g, '$1').replace(/[?&]$/, '');
       const joiner = clean.includes('?') ? '&' : '?';
       iframe.src = `${clean}${joiner}refresh=${Date.now()}`;
+      markLoaded(iframe);
+    }
+
+    function maybeRefresh(slide, iframe) {
+      if (!iframe || !iframe.getAttribute('src')) return;
+      if (RELOAD_ON_SHOW) {
+        refreshIframe(iframe);
+        return;
+      }
+      const intervalMs = slideReloadIntervalMs(slide);
+      if (!intervalMs) return; // 0 = behåll tills kiosken laddas om
+      const last = parseInt(iframe.dataset.lastLoadedAt || '0', 10);
+      if (!last || (Date.now() - last) >= intervalMs) {
+        refreshIframe(iframe);
+      }
+    }
+
+    function prefetchNeighbors(index) {
+      if (slides.length < 2) return;
+      const next = slides[(index + 1) % slides.length];
+      ensureSrc(next);
+      // Lätt prefetch även av sidan efter, så statistik ofta redan sitter i minnet
+      if (slides.length > 2) {
+        ensureSrc(slides[(index + 2) % slides.length]);
+      }
     }
 
     function getDurationMs(index) {
@@ -208,9 +250,8 @@
       slide.classList.add('active');
 
       const iframe = ensureSrc(slide);
-      if (iframe && iframe.getAttribute('src')) {
-        refreshIframe(iframe);
-      }
+      maybeRefresh(slide, iframe);
+      prefetchNeighbors(currentSlideIndex);
 
       const durationMs = getDurationMs(currentSlideIndex);
       startProgress(durationMs);
@@ -232,7 +273,12 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       keepCheckinFocus();
-      if (slides.length > 0) setSlide(0);
+      if (slides.length > 0) {
+        // Förladda första + nästa direkt så karusellen inte "blinkar" datahämtning
+        ensureSrc(slides[0]);
+        prefetchNeighbors(0);
+        setSlide(0);
+      }
       setInterval(keepCheckinFocus, 5000);
     });
   </script>

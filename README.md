@@ -42,19 +42,40 @@ Kortläsaren körs via `evdev` eller PyUSB (`READER.backend`). Medlems- och 10-k
 
 ## Config
 
-Allt styrs i `config.json`. Använd `vkc-kiosk configure-reader` i stället för manuell kortformatsredigering när det går. Detaljer i [INSTALLATION.md](INSTALLATION.md).
+Allt styrs i **lokal** `config.json` (trackas inte i git — mall: `config.example.json`).  
+Använd `vkc-kiosk configure-reader` i stället för manuell kortformatsredigering när det går. Detaljer i [INSTALLATION.md](INSTALLATION.md).
 
-## Drift
+## Verktyg (`vkc-kiosk`)
+
+Efter installation: `vkc-kiosk help` (eller `vkc-kiosk` utan argument).
+
+| Kommando | Beskrivning |
+|----------|-------------|
+| `status` | systemd-status för API/browser + `/healthz` |
+| `start` / `stop` / `restart` | Styra tjänsterna |
+| `logs` | Följ journal-loggar (`vkc-kiosk` + browser) |
+| `devices` | Lista input-/USB-läsare |
+| `pull` | `git pull` med skydd av lokal `config.json` (stashar övriga lokala ändringar) |
+| `update` | `pull` + pip + ominstallation/restart |
+| `config` | Öppna `config.json` i `$EDITOR` |
+| `url` | Skriv ut lokal kiosk-URL |
+| `setup-reader` | **YAROGNTEC/SDZNKJLTD** systemfix (sudo + reboot) |
+| `configure-reader` | Välj läsare + kortformat → skriver `config.json` |
+| `slides` | Karusell: lägg till/ta bort URL, ordning, tid, refresh (`karusell` = alias) |
+| `fix-wifi` | Permanent WiFi-profil `vkc-kiosk-wifi` (ingen nyckelring; `wifi` = alias) |
+
+Exempel:
 
 ```bash
 vkc-kiosk status
-vkc-kiosk restart
-vkc-kiosk update
-vkc-kiosk logs
-vkc-kiosk setup-reader        # endast YAROGNTEC
-vkc-kiosk configure-reader    # läsare + CARD_PROCESSING
-vkc-kiosk slides              # karusell: URL, ordning, visningstid
+vkc-kiosk slides
+vkc-kiosk pull
+sudo vkc-kiosk setup-reader          # endast YAROGNTEC
+vkc-kiosk configure-reader
+sudo vkc-kiosk fix-wifi 'SSID' 'lösenord!'   # enkla citattecken om lösen har !
 ```
+
+Full steglista och felsökning: [INSTALLATION.md](INSTALLATION.md).
 
 ## Utveckling lokalt
 

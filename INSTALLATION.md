@@ -265,7 +265,7 @@ Visa inbyggd hjälp: `vkc-kiosk` / `vkc-kiosk help`.
 | `setup-reader` | **ja** | YAROGNTEC/SDZNKJLTD (`ffff:0035`): cmdline, udev, quirk — **reboot efteråt** |
 | `configure-reader` | nej* | Interaktiv läsare + kortformat → `config.json` (*stoppar tjänsten tillfälligt) |
 | `slides` | nej | Hantera karusell (`KIOSK.slides`): URL, ordning, `durationSeconds`, `reloadIntervalSeconds`. Alias: `karusell` |
-| `fix-wifi` | **ja** | Spara WiFi utan nyckelring (netplan `99-vkc-kiosk-wifi.yaml` eller NM system-connection). Alias: `wifi` |
+| `fix-wifi` | **ja** | Permanent NM-profil `vkc-kiosk-wifi` (PSK i system-connection, ingen nyckelring). Alias: `wifi` |
 
 `config.json` ligger **inte** i git. Mall vid ny install: `config.example.json`.
 

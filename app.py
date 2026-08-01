@@ -24,6 +24,7 @@ _THREADS_START_LOCK = threading.Lock()
 CARD_CACHE = []
 TENCARD_CACHE = {}
 CACHE_LAST_UPDATE = 0
+CACHE_BOOTSTRAP_DONE = False  # False tills första GAS-hämtningen försökt klart
 SHOULD_RUN = True
 ACTIVE_READER_DEVICE = None
 
@@ -529,7 +530,7 @@ def search_local_cache(card_id, card_cache, tencard_cache):
     return None
 
 def cache_updater_thread():
-    global CARD_CACHE, TENCARD_CACHE, CACHE_LAST_UPDATE, SHOULD_RUN
+    global CARD_CACHE, TENCARD_CACHE, CACHE_LAST_UPDATE, CACHE_BOOTSTRAP_DONE, SHOULD_RUN
 
     print("CACHE UPDATER: Försöker initiera cache vid start...")
     
@@ -554,6 +555,8 @@ def cache_updater_thread():
         print("CACHE UPDATER: Varning: TENCARD_DATA_URL saknas. 10-kort inaktiverade.")
         
     CACHE_LAST_UPDATE = time.time()
+    CACHE_BOOTSTRAP_DONE = True
+    print("CACHE UPDATER: Bootstrap klar — kortuppslag tillåtna.")
     
     while SHOULD_RUN:
         time.sleep(min(5, CACHE_UPDATE_INTERVAL))
@@ -631,27 +634,43 @@ def handle_card_read(card_id):
 
     # 2. Status om kortet INTE hittades
     if not status_data:
-        msg = "Kortet hittades inte i systemet."
-        print(
-            f"KORT EJ HITTAT: {card_id_str!r} "
-            f"(medlemmar={len(CARD_CACHE)}, 10-kort={len(TENCARD_CACHE)})"
-        )
+        if not CACHE_BOOTSTRAP_DONE:
+            print(
+                f"KORT FÖRE CACHE: {card_id_str!r} — bootstrap pågår "
+                f"(medlemmar={len(CARD_CACHE)}, 10-kort={len(TENCARD_CACHE)})"
+            )
+            status_data = {
+                "type": "UNKNOWN",
+                "status": "CACHE_LOADING",
+                "message": (
+                    "Vänligen vänta, systemet väntar på att ta hem kortinformation"
+                ),
+                "secondary_message": "",
+                "status_color": "blue",
+                "color_code": "#2196F3",
+                "card_number_dec": card_id_str,
+                "member_name": "",
+                "expiry_date": "",
+            }
+        else:
+            msg = "Kortet hittades inte i systemet."
+            print(
+                f"KORT EJ HITTAT: {card_id_str!r} "
+                f"(medlemmar={len(CARD_CACHE)}, 10-kort={len(TENCARD_CACHE)})"
+            )
 
-        status_data = {
-            "type": "UNKNOWN",
-            "status": "NOT_FOUND",
-            "message": msg,
-            "secondary_message": (
-                f"ID {card_id_str} finns inte i cachen ännu. "
-                "Kontakta personal eller vänta på cache-uppdatering."
-            ),
-            "status_color": "red",
-            "color_code": "#F44336",
-            "card_number_dec": card_id_str,
-            "member_name": "Okänd/Ej registrerad",
-            "expiry_date": ""
-        }
-        
+            status_data = {
+                "type": "UNKNOWN",
+                "status": "NOT_FOUND",
+                "message": msg,
+                "secondary_message": "Vänligen kontakta personal för registrering.",
+                "status_color": "red",
+                "color_code": "#F44336",
+                "card_number_dec": card_id_str,
+                "member_name": "Okänd/Ej registrerad",
+                "expiry_date": "",
+            }
+
     # 3. Hantera 10-kort (KRITISK ÄNDRING HÄR)
     elif status_data.get("type") == "TENCARD":
         

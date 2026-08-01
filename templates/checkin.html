@@ -185,8 +185,8 @@ h1 {
    // Misslyckade statusar
    audioFailure.play().catch(e => console.error("Kunde inte spela upp misslyckad-ljud:", e));
   }
+  // CACHE_LOADING / TENCARD_PROCESSING: inget ljud
  
-  // Spela inte ljud för den tillfälliga statusen "TENCARD_PROCESSING"
   lastPlayedStatus = status; // Uppdatera senast spelade status
  }
  // -------------------------

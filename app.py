@@ -352,7 +352,7 @@ def handle_ten_card_clip_callback(thread_type, api_status, api_data):
                 print(f"[KLIPP] Klipp misslyckades: Slut på klipp för kort {card_id}.")
                 current_card_status["status"] = "TENCARD_CLIP_FAIL_EXHAUSTED"
                 current_card_status["message"] = "Klipp misslyckades: 0 klipp kvar!"
-                current_card_status["secondary_message"] = "Vänligen köp nytt kort."
+                current_card_status["secondary_message"] = "Vänligen lämna in kortet i receptionen"
                 current_card_status["status_color"] = "red"
                 current_card_status["color_code"] = "#F44336"
                 current_card_status.pop("status_expires_at", None)
@@ -472,11 +472,7 @@ def search_local_cache(card_id, card_cache, tencard_cache):
             color = 'red'
             code = '#F44336'
             main_message = f"10-kort slut (0 klipp kvar)."
-            secondary_status_text = (
-                f"Vänligen köp nytt kort, {member_name}."
-                if member_name
-                else "Vänligen köp nytt kort."
-            )
+            secondary_status_text = "Vänligen lämna in kortet i receptionen"
             
         return {
             "type": "TENCARD",

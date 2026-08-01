@@ -52,29 +52,48 @@ cmd_restart() {
   cmd_status
 }
 
-preserve_config_around() {
-  # Kör ett kommando medan lokal config.json skyddas från git overwrite.
-  local backup="${ROOT_DIR}/config.json.localbak"
-  local had_config=0
+cmd_pull() {
+  # Behåll alltid lokal config.json. Övriga lokala ändringar stasas
+  # så git pull inte stoppas (vanligt efter manuella hotfixes på Pi).
+  cd "${ROOT_DIR}"
+  local branch backup stash_msg dirty=0
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+  backup="${ROOT_DIR}/config.json.localbak"
+  stash_msg="vkc-kiosk pull auto-stash $(date -Iseconds 2>/dev/null || date)"
+
   if [[ -f "${ROOT_DIR}/config.json" ]]; then
-    had_config=1
     cp -a "${ROOT_DIR}/config.json" "${backup}"
-    git -C "${ROOT_DIR}" stash push -m "vkc-kiosk auto-stash config" -- config.json >/dev/null 2>&1 || true
   fi
+
+  if ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    dirty=1
+  fi
+
+  if [[ "${dirty}" -eq 1 ]]; then
+    echo "Lokala ändringar hittades — sparar i git stash innan pull..."
+    git stash push -u -m "${stash_msg}" || {
+      echo "Kunde inte stash:a lokala ändringar. Avbryter." >&2
+      return 1
+    }
+    echo "Stash: ${stash_msg}"
+    echo "Återställ vid behov: git stash list && git stash show -p"
+  fi
+
   local rc=0
-  "$@" || rc=$?
-  if [[ "${had_config}" -eq 1 && -f "${backup}" ]]; then
+  git pull --ff-only origin "${branch}" || rc=$?
+
+  if [[ -f "${backup}" ]]; then
     cp -a "${backup}" "${ROOT_DIR}/config.json"
     echo "Återställde din lokala config.json (backup: ${backup})"
   fi
-  return "${rc}"
-}
 
-cmd_pull() {
-  cd "${ROOT_DIR}"
-  local branch
-  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
-  preserve_config_around git pull --ff-only origin "${branch}"
+  if [[ "${rc}" -ne 0 ]]; then
+    echo "git pull misslyckades (kod ${rc}). Din config.json är återställd." >&2
+    if [[ "${dirty}" -eq 1 ]]; then
+      echo "Lokala filer ligger kvar i stash — se: git stash list" >&2
+    fi
+  fi
+  return "${rc}"
 }
 
 cmd_update() {

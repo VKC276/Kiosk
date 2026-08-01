@@ -325,13 +325,16 @@ journalctl -t vkc-kiosk -n 20
 **Pi Connect**  
 Chromium körs med `--start-fullscreen` (inte hård `--kiosk`). Lämna med F11 eller Alt+Tab.
 
-**`git pull` blockeras av lokal `config.json`**
+**`git pull` blockeras av lokala ändringar**
+
+Använd `vkc-kiosk pull` (stashar lokala filändringar, behåller `config.json`).
+Manuellt:
 
 ```bash
-cp config.json /tmp/vkc-config.json.bak
-git stash push -m "config" -- config.json
-git pull
-cp /tmp/vkc-config.json.bak config.json
+cp -a config.json config.json.localbak
+git stash push -u -m "pi local before pull"
+git pull --ff-only
+cp -a config.json.localbak config.json
 ```
 
 ---

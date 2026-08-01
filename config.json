@@ -43,7 +43,8 @@
       "path": "/checkin",
       "heightPercent": 20
     },
-    "reloadOnShow": true,
+    "reloadOnShow": false,
+    "reloadIntervalSeconds": 300,
     "slides": [
       {
         "id": "top-sends",

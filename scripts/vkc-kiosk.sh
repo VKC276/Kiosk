@@ -119,6 +119,10 @@ cmd_configure_reader() {
   exec "$(python_bin)" "${ROOT_DIR}/scripts/configure-card-reader.py" "$@"
 }
 
+cmd_slides() {
+  exec "$(python_bin)" "${ROOT_DIR}/scripts/manage-slides.py" "$@"
+}
+
 main() {
   local cmd="${1:-}"
   shift || true
@@ -136,6 +140,7 @@ main() {
     url)     echo "http://127.0.0.1:$(port)/" ;;
     setup-reader) cmd_setup_reader ;;
     configure-reader) cmd_configure_reader "$@" ;;
+    slides|karusell) cmd_slides "$@" ;;
     -h|--help|help|"") usage ;;
     *) echo "Okänt kommando: ${cmd}" >&2; usage; exit 1 ;;
   esac

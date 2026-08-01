@@ -76,12 +76,67 @@ def slides_of(cfg: dict) -> list[dict]:
     return slides
 
 
+def global_reload_default(cfg: dict) -> int:
+    try:
+        return int((cfg.get("KIOSK") or {}).get("reloadIntervalSeconds", 300))
+    except (TypeError, ValueError):
+        return 300
+
+
 def slide_duration_seconds(slide: dict) -> int:
     if slide.get("durationSeconds") is not None:
         return max(1, int(float(slide["durationSeconds"])))
     if slide.get("durationMs") is not None:
         return max(1, int(round(float(slide["durationMs"]) / 1000)))
     return 30
+
+
+def slide_reload_label(slide: dict, global_default: int) -> str:
+    if "reloadIntervalSeconds" not in slide or slide.get("reloadIntervalSeconds") is None:
+        return f"default({global_default}s)"
+    try:
+        value = int(slide["reloadIntervalSeconds"])
+    except (TypeError, ValueError):
+        return f"default({global_default}s)"
+    if value <= 0:
+        return "aldrig"
+    return f"{value}s"
+
+
+def prompt_reload_interval(slide: dict | None, global_default: int) -> int | None:
+    """Returnerar int, eller None = ärv global standard (ta bort nyckel)."""
+    print(
+        "Refresh-intervall: hur ofta sidan får hämtas om när den visas.\n"
+        "  heltal sekunder  = egen refresh (t.ex. 120 för tidskritiskt)\n"
+        "  0               = aldrig refresh (statiskt tills kiosk-omstart)\n"
+        "  d / default     = använd global KIOSK.reloadIntervalSeconds"
+        f" (nu {global_default}s)"
+    )
+    if slide is not None and "reloadIntervalSeconds" in slide and slide.get("reloadIntervalSeconds") is not None:
+        current = str(int(slide["reloadIntervalSeconds"]))
+    else:
+        current = "d"
+    raw = prompt("Refresh-intervall", current).strip().lower()
+    if raw in {"", "d", "default", "global"}:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        print("Ogiltigt värde — behåller previous/default.")
+        if slide is not None and "reloadIntervalSeconds" in slide:
+            try:
+                return int(slide["reloadIntervalSeconds"])
+            except (TypeError, ValueError):
+                return None
+        return None
+    return max(0, value)
+
+
+def apply_reload_interval(slide: dict, value: int | None) -> None:
+    if value is None:
+        slide.pop("reloadIntervalSeconds", None)
+    else:
+        slide["reloadIntervalSeconds"] = int(value)
 
 
 def normalize_url(url: str) -> str:

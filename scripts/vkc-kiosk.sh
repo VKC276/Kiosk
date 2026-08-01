@@ -28,8 +28,6 @@ Kortläsare & kiosk
   setup-reader        YAROGNTEC/SDZNKJLTD systemfix (sudo + reboot)
   configure-reader    Välj läsare + kortformat → config.json
   slides              Karusell: URL, ordning, tid, refresh  (alias: karusell)
-  fix-wifi            Spara WiFi utan nyckelring (netplan/NM)  (alias: wifi)
-                      Exempel: sudo vkc-kiosk fix-wifi 'SSID' 'lösen!'
 
 Dokumentation: INSTALLATION.md och README.md i git-repot.
 EOF
@@ -160,10 +158,6 @@ cmd_slides() {
   exec "$(python_bin)" "${ROOT_DIR}/scripts/manage-slides.py" "$@"
 }
 
-cmd_fix_wifi() {
-  sudo "${ROOT_DIR}/scripts/fix-wifi-system.sh" "$@"
-}
-
 main() {
   local cmd="${1:-}"
   shift || true
@@ -182,7 +176,6 @@ main() {
     setup-reader) cmd_setup_reader ;;
     configure-reader) cmd_configure_reader "$@" ;;
     slides|karusell) cmd_slides "$@" ;;
-    fix-wifi|wifi) cmd_fix_wifi "$@" ;;
     -h|--help|help|"") usage ;;
     *) echo "Okänt kommando: ${cmd}" >&2; usage; exit 1 ;;
   esac

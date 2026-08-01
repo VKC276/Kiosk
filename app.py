@@ -963,6 +963,14 @@ def kiosk():
         checkin_height = 0
     content_height = 100 - checkin_height
 
+    # Standard: behåll iframe-innehåll mellan varv; hämta om ca var 5:e minut.
+    reload_on_show = bool(kiosk_cfg.get("reloadOnShow", False))
+    try:
+        reload_interval_seconds = int(kiosk_cfg.get("reloadIntervalSeconds", 300))
+    except (TypeError, ValueError):
+        reload_interval_seconds = 300
+    reload_interval_seconds = max(0, reload_interval_seconds)
+
     return render_template(
         'kiosk.html',
         slides=normalize_kiosk_slides(kiosk_cfg.get("slides")),
@@ -970,7 +978,8 @@ def kiosk():
         checkin_path=checkin_path,
         checkin_height=checkin_height,
         content_height=content_height,
-        reload_on_show=bool(kiosk_cfg.get("reloadOnShow", True)),
+        reload_on_show=reload_on_show,
+        reload_interval_ms=reload_interval_seconds * 1000,
     )
 
 

@@ -104,17 +104,17 @@
       <div
         class="rotator-slide{% if loop.first %} active{% endif %}"
         data-duration-ms="{{ slide.durationMs }}"
-        data-url="{{ slide.url }}"
+        data-url="{{ slide.url|e }}"
         {% if slide.reloadIntervalSeconds is not none %}data-reload-interval-sec="{{ slide.reloadIntervalSeconds }}"{% endif %}
         id="slide-{{ slide.id }}"
       >
         <iframe
           id="iframe-{{ slide.id }}"
-          title="{{ slide.title }}"
+          title="{{ slide.title|e }}"
           tabindex="-1"
           loading="{% if loop.first or loop.index0 < 2 %}eager{% else %}lazy{% endif %}"
-          data-base="{{ slide.url }}"
-          {% if loop.first %}src="{{ slide.url }}"{% endif %}
+          data-base="{{ slide.url|e }}"
+          {% if loop.first %}src="{{ slide.url|e }}"{% endif %}
         ></iframe>
       </div>
       {% endfor %}
@@ -169,23 +169,51 @@
       if (iframe) iframe.dataset.lastLoadedAt = String(Date.now());
     }
 
+    /** Bevara #fragment (t.ex. #blå) — query måste ligga FÖRE hash. */
+    function splitUrlAndHash(url) {
+      const raw = String(url || '');
+      const i = raw.indexOf('#');
+      if (i === -1) return { beforeHash: raw, hash: '' };
+      return { beforeHash: raw.slice(0, i), hash: raw.slice(i) };
+    }
+
+    function canonicalSlideUrl(slide, iframe) {
+      return (
+        (iframe && iframe.getAttribute('data-base')) ||
+        (slide && slide.getAttribute('data-url')) ||
+        ''
+      );
+    }
+
+    function withRefreshParam(url) {
+      const { beforeHash, hash } = splitUrlAndHash(url);
+      let clean = beforeHash
+        .replace(/([?&])refresh=\d+/g, '$1')
+        .replace(/[?&]$/, '');
+      const joiner = clean.includes('?') ? '&' : '?';
+      return `${clean}${joiner}refresh=${Date.now()}${hash}`;
+    }
+
     function ensureSrc(slide) {
       const iframe = slide.querySelector('iframe');
       if (!iframe) return null;
-      const base = iframe.getAttribute('data-base') || slide.dataset.url;
-      if (!iframe.getAttribute('src')) {
+      const base = canonicalSlideUrl(slide, iframe);
+      if (!base) return iframe;
+      // iframe.src som property tappar ofta hash vid avläsning — lita på data-base.
+      if (iframe.dataset.loadedFromBase !== '1') {
         iframe.src = base;
+        iframe.dataset.loadedFromBase = '1';
         markLoaded(iframe);
       }
       return iframe;
     }
 
-    function refreshIframe(iframe) {
+    function refreshIframe(iframe, slide) {
       if (!iframe) return;
-      const base = iframe.getAttribute('data-base') || iframe.src;
-      const clean = String(base).replace(/([?&])refresh=\d+/g, '$1').replace(/[?&]$/, '');
-      const joiner = clean.includes('?') ? '&' : '?';
-      iframe.src = `${clean}${joiner}refresh=${Date.now()}`;
+      const base = canonicalSlideUrl(slide, iframe) || iframe.getAttribute('data-base');
+      if (!base) return;
+      iframe.src = withRefreshParam(base);
+      iframe.dataset.loadedFromBase = '1';
       markLoaded(iframe);
     }
 

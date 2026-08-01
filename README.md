@@ -62,7 +62,6 @@ Efter installation: `vkc-kiosk help` (eller `vkc-kiosk` utan argument).
 | `setup-reader` | **YAROGNTEC/SDZNKJLTD** systemfix (sudo + reboot) |
 | `configure-reader` | Välj läsare + kortformat → skriver `config.json` |
 | `slides` | Karusell: lägg till/ta bort URL, ordning, tid, refresh (`karusell` = alias) |
-| `fix-wifi` | Permanent WiFi-profil `vkc-kiosk-wifi` (ingen nyckelring; `wifi` = alias) |
 
 Exempel:
 
@@ -72,8 +71,9 @@ vkc-kiosk slides
 vkc-kiosk pull
 sudo vkc-kiosk setup-reader          # endast YAROGNTEC
 vkc-kiosk configure-reader
-sudo vkc-kiosk fix-wifi 'SSID' 'lösenord!'   # enkla citattecken om lösen har !
 ```
+
+WiFi hanteras via skrivbordets nätverks-GUI / nyckelring — inte av `vkc-kiosk`.
 
 Full steglista och felsökning: [INSTALLATION.md](INSTALLATION.md).
 

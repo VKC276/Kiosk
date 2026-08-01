@@ -10,20 +10,26 @@ usage() {
   cat <<EOF
 Användning: vkc-kiosk <kommando>
 
-  status              Visa tjänstestatus + healthz
-  restart             Starta om API (och browser om den finns)
-  stop                Stoppa tjänster
-  start               Starta tjänster
+Drift
+  status              Tjänstestatus + /healthz
+  start               Starta API
+  stop                Stoppa browser + API
+  restart             Starta om API (+ browser) och visa status
   logs                Följ journal-loggar
-  devices             Lista input-enheter (kortläsare)
-  update              git pull (behåller config.json) + pip + restart
-  pull                git pull och behåller din lokala config.json
-  config              Öppna config.json i \$EDITOR
+  devices             Lista input-/USB-läsare
   url                 Skriv ut lokal kiosk-URL
-  setup-reader        Installera YAROGNTEC/SDZNKJLTD USB-fix (systemändringar)
-  configure-reader    Interaktiv assistent: läsare + kortformat → config.json
-  slides              Hantera karusell: lägg till/ta bort URL, ordning, tid
-  fix-wifi            Spara WiFi som systemanslutning (undvik nyckelrings-prompt)
+
+Kod & config
+  pull                git pull (behåller config.json; stashar övrigt)
+  update              pull + pip + ominstallation/restart
+  config              Öppna config.json i \$EDITOR
+
+Kortläsare & kiosk
+  setup-reader        YAROGNTEC/SDZNKJLTD systemfix (sudo + reboot)
+  configure-reader    Välj läsare + kortformat → config.json
+  slides              Karusell: URL, ordning, tid, refresh  (alias: karusell)
+
+Dokumentation: INSTALLATION.md och README.md i git-repot.
 EOF
 }
 
@@ -54,42 +60,51 @@ cmd_restart() {
 }
 
 cmd_pull() {
-  # Behåll alltid lokal config.json. Övriga lokala ändringar stasas
-  # så git pull inte stoppas (vanligt efter manuella hotfixes på Pi).
+  # config.json ska ALDRIG komma från git. Backup → (unstash kod) → pull → restore.
   cd "${ROOT_DIR}"
   local branch backup stash_msg dirty=0
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
   backup="${ROOT_DIR}/config.json.localbak"
   stash_msg="vkc-kiosk pull auto-stash $(date -Iseconds 2>/dev/null || date)"
 
-  if [[ -f "${ROOT_DIR}/config.json" ]]; then
+  if [[ ! -f "${ROOT_DIR}/config.json" ]]; then
+    echo "Varning: config.json saknas innan pull." >&2
+  else
     cp -a "${ROOT_DIR}/config.json" "${backup}"
+    echo "Säkerhetskopia: ${backup}"
   fi
 
-  if ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+  # Sluta tracka config lokalt (äldre kloner) innan pull kan skriva över den.
+  if git ls-files --error-unmatch config.json >/dev/null 2>&1; then
+    git rm --cached -f config.json >/dev/null 2>&1 || true
+  fi
+
+  if ! git diff --quiet || ! git diff --cached --quiet \
+     || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
     dirty=1
-  fi
-
-  if [[ "${dirty}" -eq 1 ]]; then
-    echo "Lokala ändringar hittades — sparar i git stash innan pull..."
+    echo "Lokala kodändringar hittades — sparar i git stash innan pull..."
     git stash push -u -m "${stash_msg}" || {
       echo "Kunde inte stash:a lokala ändringar. Avbryter." >&2
+      [[ -f "${backup}" ]] && cp -a "${backup}" "${ROOT_DIR}/config.json"
       return 1
     }
     echo "Stash: ${stash_msg}"
-    echo "Återställ vid behov: git stash list && git stash show -p"
   fi
 
   local rc=0
   git pull --ff-only origin "${branch}" || rc=$?
 
+  # Alltid återställ config från backup tagen FÖRE stash/pull.
   if [[ -f "${backup}" ]]; then
     cp -a "${backup}" "${ROOT_DIR}/config.json"
-    echo "Återställde din lokala config.json (backup: ${backup})"
+    echo "Återställde din lokala config.json från ${backup}"
+  elif [[ ! -f "${ROOT_DIR}/config.json" && -f "${ROOT_DIR}/config.example.json" ]]; then
+    cp -a "${ROOT_DIR}/config.example.json" "${ROOT_DIR}/config.json"
+    echo "Varning: skapade config.json från example — fyll i dina URL:er." >&2
   fi
 
   if [[ "${rc}" -ne 0 ]]; then
-    echo "git pull misslyckades (kod ${rc}). Din config.json är återställd." >&2
+    echo "git pull misslyckades (kod ${rc})." >&2
     if [[ "${dirty}" -eq 1 ]]; then
       echo "Lokala filer ligger kvar i stash — se: git stash list" >&2
     fi
@@ -143,10 +158,6 @@ cmd_slides() {
   exec "$(python_bin)" "${ROOT_DIR}/scripts/manage-slides.py" "$@"
 }
 
-cmd_fix_wifi() {
-  sudo "${ROOT_DIR}/scripts/fix-wifi-system.sh" "$@"
-}
-
 main() {
   local cmd="${1:-}"
   shift || true
@@ -165,7 +176,6 @@ main() {
     setup-reader) cmd_setup_reader ;;
     configure-reader) cmd_configure_reader "$@" ;;
     slides|karusell) cmd_slides "$@" ;;
-    fix-wifi|wifi) cmd_fix_wifi "$@" ;;
     -h|--help|help|"") usage ;;
     *) echo "Okänt kommando: ${cmd}" >&2; usage; exit 1 ;;
   esac

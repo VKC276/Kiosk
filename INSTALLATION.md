@@ -265,9 +265,9 @@ Visa inbyggd hjälp: `vkc-kiosk` / `vkc-kiosk help`.
 | `setup-reader` | **ja** | YAROGNTEC/SDZNKJLTD (`ffff:0035`): cmdline, udev, quirk — **reboot efteråt** |
 | `configure-reader` | nej* | Interaktiv läsare + kortformat → `config.json` (*stoppar tjänsten tillfälligt) |
 | `slides` | nej | Hantera karusell (`KIOSK.slides`): URL, ordning, `durationSeconds`, `reloadIntervalSeconds`. Alias: `karusell` |
-| `fix-wifi` | **ja** | Permanent NM-profil `vkc-kiosk-wifi` (PSK i system-connection, ingen nyckelring). Alias: `wifi` |
 
-`config.json` ligger **inte** i git. Mall vid ny install: `config.example.json`.
+`config.json` ligger **inte** i git. Mall vid ny install: `config.example.json`.  
+WiFi hanteras **inte** av `vkc-kiosk` — använd skrivbordets nätverks-GUI / nyckelring.
 
 ### Exempel
 
@@ -289,9 +289,6 @@ vkc-kiosk devices
 # Karusell / slides
 vkc-kiosk slides
 
-# WiFi som funkar efter autologin/reboot (enkla citattecken om lösen har !)
-sudo vkc-kiosk fix-wifi 'Mobile-bridge_24' 'lösenord!'
-
 # Config
 vkc-kiosk config
 vkc-kiosk url
@@ -304,7 +301,6 @@ vkc-kiosk url
 | `setup-reader` | `scripts/setup-yarogntec-reader.sh` → `deploy/install-usb-reader-quirk.sh` |
 | `configure-reader` | `scripts/configure-card-reader.py` |
 | `slides` | `scripts/manage-slides.py` |
-| `fix-wifi` | `scripts/fix-wifi-system.sh` |
 | `devices` | `scripts/list_input_devices.py` (+ API) |
 
 ### API-hjälp
@@ -371,30 +367,28 @@ cat /proc/cmdline | tr ' ' '\n' | grep -E 'authorized_default|usbhid.quirks'
 journalctl -t vkc-kiosk -n 20
 ```
 
-**WiFi frågar lösenord / "visa lösenord" visar skräp**
+**WiFi / nyckelring (via GUI)**
 
-Vanligt med autologin: lösenordet sparades i användarnyckelringen, som inte alltid låses upp. Spara som systemanslutning i stället:
+WiFi sköts via skrivbordets nätverksinställningar — **inte** av `vkc-kiosk`.
 
-```bash
-sudo vkc-kiosk fix-wifi
-# Direkt (använd enkla citattecken — viktigt om lösenordet innehåller !):
-sudo vkc-kiosk fix-wifi 'MittWifi' 'losenord!'
-```
-
-Skriver permanent profil **`vkc-kiosk-wifi`** till  
-`/etc/NetworkManager/system-connections/vkc-kiosk-wifi.nmconnection`  
-(med PSK i filen, `autoconnect-priority=999`). Tar bort den gamla netplan-filen  
-`/etc/netplan/99-vkc-kiosk-wifi.yaml` om den finns (den var opålitlig efter reboot).
-
-Kontroll efteråt:
+Rensa gamla automatiska profiler + nyckelring, sedan anslut via GUI:
 
 ```bash
-nmcli -t -f DEVICE,STATE,CONNECTION device status
-ping -c2 1.1.1.1
-sudo nmcli -s -g 802-11-wireless-security.psk connection show vkc-kiosk-wifi | wc -c
+# Ta bort ev. tidigare vkc/netplan-wifi-filer
+sudo rm -f /etc/netplan/99-vkc-kiosk-wifi.yaml
+sudo rm -f /etc/NetworkManager/system-connections/vkc-kiosk-wifi.nmconnection
+sudo rm -f /etc/NetworkManager/system-connections/Mobile-bridge_24.nmconnection
+sudo rm -f /etc/NetworkManager/system-connections/1.nmconnection
+sudo nmcli connection reload
+sudo netplan apply 2>/dev/null || true
+
+# Nollställ användarnyckelring (inloggad som kiosk-användare, t.ex. dev)
+rm -f ~/.local/share/keyrings/*
+# Logga ut/in (eller reboot), skapa ny nyckelring när GUI frågar
+# — välj gärna samma lösenord som användaren, eller "Unlock at login"
 ```
 
-Undvik att spara nätet via skrivbordsdialogen efteråt.
+Därefter: nätverksmeny → `Mobile-bridge_24` → ange lösenord → bocka i att spara.
 
 **Pi Connect**  
 Chromium körs med `--start-fullscreen` (inte hård `--kiosk`). Lämna med F11 eller Alt+Tab.

@@ -23,6 +23,7 @@ Kod & config
   pull                git pull (behåller config.json; stashar bara tracked)
   update              pull + pip + ominstallation/restart
   config              Öppna config.json i \$EDITOR
+  save-config         Spegla nuvarande config.json → ~/.config/vkc-kiosk/
   restore-config      Återställ config.json från ~/.config/vkc-kiosk/
 
 Kortläsare & kiosk
@@ -70,38 +71,24 @@ config_backup_dir() {
   echo "${home_dir}/.config/vkc-kiosk"
 }
 
-backup_config() {
+mirror_config_backup() {
+  # Spegla NUVARANDE config.json till ~/.config (disaster recovery).
+  # Anropas bara när working-tree-filen är den som ska bevaras.
   local src="${ROOT_DIR}/config.json"
-  local dir stamp dest_stable dest_stamp dest_local
+  local dir stamp
+  [[ -f "${src}" ]] || return 1
   dir="$(config_backup_dir)"
   mkdir -p "${dir}"
-  dest_stable="${dir}/config.json"
-  dest_local="${ROOT_DIR}/config.json.localbak"
   stamp="$(date +%Y%m%d-%H%M%S 2>/dev/null || echo now)"
-  dest_stamp="${dir}/config-${stamp}.json"
-
-  if [[ ! -f "${src}" ]]; then
-    # Försök återskapa från tidigare säker kopia innan pull
-    if [[ -f "${dest_stable}" ]]; then
-      cp -a "${dest_stable}" "${src}"
-      echo "Återställde saknad config.json från ${dest_stable}" >&2
-      return 0
-    fi
-    echo "Varning: config.json saknas (ingen backup i ${dir})." >&2
-    return 1
-  fi
-
-  cp -a "${src}" "${dest_stable}"
-  cp -a "${src}" "${dest_stamp}"
-  cp -a "${src}" "${dest_local}"
-  # Behåll max 10 tidsstämplade kopior
+  cp -a "${src}" "${dir}/config.json"
+  cp -a "${src}" "${dir}/config-${stamp}.json"
+  cp -a "${src}" "${ROOT_DIR}/config.json.localbak"
   ls -1t "${dir}"/config-*.json 2>/dev/null | tail -n +11 | xargs -r rm -f || true
-  echo "Säkerhetskopia: ${dest_stable}"
-  echo "                ${dest_stamp}"
-  return 0
+  echo "Backup speglad: ${dir}/config.json"
 }
 
-restore_config() {
+restore_config_from_home() {
+  # Endast för kommandot restore-config — inte under pull.
   local dest="${ROOT_DIR}/config.json"
   local dir stable localbak
   dir="$(config_backup_dir)"
@@ -122,32 +109,37 @@ restore_config() {
 }
 
 cmd_pull() {
-  # config.json får ALDRIG försvinna eller ersättas av git/example.
-  # Bug som orsakat dataförlust: stash -u kunde stasha bort både config
-  # och config.json.localbak innan restore hann köras.
+  # Bevara EXAKT den config.json som finns just nu — inte en gammal
+  # ~/.config-kopia (det skrev över manuellt inskrivna configs).
   cd "${ROOT_DIR}"
-  local branch stash_msg dirty=0 had_config=0 rc=0
+  local branch stash_msg dirty=0 rc=0 pull_bak=""
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
   stash_msg="vkc-kiosk pull auto-stash $(date -Iseconds 2>/dev/null || date)"
 
   if [[ -f "${ROOT_DIR}/config.json" ]]; then
-    had_config=1
+    pull_bak="$(mktemp /tmp/vkc-kiosk-config.XXXXXX.json)"
+    cp -a "${ROOT_DIR}/config.json" "${pull_bak}"
+    mirror_config_backup || true
+    echo "Pull-skydd: ${pull_bak}"
+  else
+    echo "Varning: config.json saknas före pull — försöker hem-backup efteråt." >&2
   fi
-  backup_config || true
 
   # Sluta tracka config lokalt (äldre kloner).
   if git ls-files --error-unmatch config.json >/dev/null 2>&1; then
     git rm --cached -f config.json >/dev/null 2>&1 || true
   fi
 
-  # Stasha BARA tracked ändringar — aldrig -u (untracked), annars riskerar
-  # config.json / localbak att försvinna från working tree.
+  # Stasha BARA tracked ändringar — aldrig -u.
   if ! git diff --quiet || ! git diff --cached --quiet; then
     dirty=1
     echo "Lokala kodändringar hittades — sparar i git stash (bara tracked)..."
     git stash push -m "${stash_msg}" || {
       echo "Kunde inte stash:a. Avbryter." >&2
-      restore_config || true
+      if [[ -n "${pull_bak}" && -f "${pull_bak}" ]]; then
+        cp -a "${pull_bak}" "${ROOT_DIR}/config.json"
+        rm -f "${pull_bak}"
+      fi
       return 1
     }
     echo "Stash: ${stash_msg}"
@@ -155,15 +147,18 @@ cmd_pull() {
 
   git pull --ff-only origin "${branch}" || rc=$?
 
-  # Alltid återställ skyddad config (aldrig config.example.json automatiskt).
-  if ! restore_config; then
-    if [[ "${had_config}" -eq 1 ]]; then
-      echo "FEL: config.json fanns före pull men kunde inte återställas." >&2
-      echo "Kolla: ls -la \"$(config_backup_dir)\" ; git stash list" >&2
+  if [[ -n "${pull_bak}" && -f "${pull_bak}" ]]; then
+    cp -a "${pull_bak}" "${ROOT_DIR}/config.json"
+    mirror_config_backup || true
+    rm -f "${pull_bak}"
+    echo "Återställde config.json från denna pulls skyddskopia (inte gammal backup)."
+  elif [[ ! -f "${ROOT_DIR}/config.json" ]]; then
+    if restore_config_from_home; then
+      :
+    else
+      echo "Varning: ingen config.json efter pull." >&2
+      echo "  Skriv in den igen, sedan: mkdir -p ~/.config/vkc-kiosk && cp -a config.json ~/.config/vkc-kiosk/" >&2
       rc=1
-    elif [[ -f "${ROOT_DIR}/config.example.json" && ! -f "${ROOT_DIR}/config.json" ]]; then
-      echo "Varning: ingen config.json. Kopiera manuellt:" >&2
-      echo "  cp config.example.json config.json   # och fyll i dina värden" >&2
     fi
   fi
 
@@ -183,14 +178,24 @@ cmd_restore_config() {
   echo "Backupkatalog: ${dir}"
   ls -la "${dir}" 2>/dev/null || echo "(tom / saknas)"
   echo
-  if restore_config; then
+  if restore_config_from_home; then
+    mirror_config_backup || true
     echo "Klart. Starta om: vkc-kiosk restart"
   else
-    echo "Ingen backup hittades. Leta i git stash:" >&2
-    echo "  git stash list" >&2
-    echo "  git stash show -p stash@{0} -- config.json | head" >&2
+    echo "Ingen backup hittades." >&2
     return 1
   fi
+}
+
+cmd_save_config() {
+  # Spegla nuvarande (bra) config till hem-backup — kör efter manuell edit.
+  cd "${ROOT_DIR}"
+  if [[ ! -f "${ROOT_DIR}/config.json" ]]; then
+    echo "config.json saknas." >&2
+    return 1
+  fi
+  mirror_config_backup
+  echo "Din nuvarande config är sparad som backup. Framtida pull rör den inte felaktigt."
 }
 
 cmd_update() {
@@ -253,6 +258,7 @@ main() {
     update)  cmd_update ;;
     pull)    cmd_pull ;;
     config)  "${EDITOR:-nano}" "${ROOT_DIR}/config.json" ;;
+    save-config) cmd_save_config ;;
     restore-config) cmd_restore_config ;;
     url)     echo "http://127.0.0.1:$(port)/" ;;
     setup-reader) cmd_setup_reader ;;

@@ -261,6 +261,7 @@ Visa inbyggd hjälp: `vkc-kiosk` / `vkc-kiosk help`.
 | `pull` | nej | `git pull`; sparar `config.json` i `~/.config/vkc-kiosk/` **utanför** repot och återställer efteråt. Stashar bara tracked kod (aldrig `-u`) |
 | `update` | delvis | `pull` + `pip install -r requirements.txt` + `install.sh`/`restart` |
 | `config` | nej | Öppna `config.json` i `$EDITOR` (standard `nano`) |
+| `save-config` | nej | Spegla nuvarande (bra) `config.json` → `~/.config/vkc-kiosk/` — kör efter manuell edit |
 | `restore-config` | nej | Återställ `config.json` från `~/.config/vkc-kiosk/` |
 | `url` | nej | Skriv ut `http://127.0.0.1:<port>/` |
 | `setup-reader` | **ja** | YAROGNTEC/SDZNKJLTD (`ffff:0035`): cmdline, udev, quirk — **reboot efteråt** |
@@ -372,40 +373,53 @@ journalctl -t vkc-kiosk -n 20
 
 WiFi sköts via skrivbordets nätverksinställningar — **inte** av `vkc-kiosk`.
 
-Rensa gamla automatiska profiler + nyckelring, sedan anslut via GUI:
+Rensa gamla profiler vid behov, skapa nyckelring, anslut via GUI:
 
 ```bash
-# Ta bort ev. tidigare vkc/netplan-wifi-filer
 sudo rm -f /etc/netplan/99-vkc-kiosk-wifi.yaml
 sudo rm -f /etc/NetworkManager/system-connections/vkc-kiosk-wifi.nmconnection
-sudo rm -f /etc/NetworkManager/system-connections/Mobile-bridge_24.nmconnection
-sudo rm -f /etc/NetworkManager/system-connections/1.nmconnection
 sudo nmcli connection reload
-sudo netplan apply 2>/dev/null || true
-
-# Nollställ användarnyckelring (inloggad som kiosk-användare, t.ex. dev)
-rm -f ~/.local/share/keyrings/*
-# Logga ut/in (eller reboot), skapa ny nyckelring när GUI frågar
-# — välj gärna samma lösenord som användaren, eller "Unlock at login"
 ```
 
-Därefter: nätverksmeny → `Mobile-bridge_24` → ange lösenord → bocka i att spara.
+### Nyckelring som låses upp vid autologin
+
+Enklast och vanligast på kiosk: **tomt lösenord på login-nyckelringen** (då låses den upp automatiskt).
+
+1. Installera Seahorse om det saknas: `sudo apt install -y seahorse`
+2. Öppna **Lösenord och nycklar** (Seahorse) → högerklicka **Inloggning** / **Login** → **Ändra lösenord**
+3. Ange nuvarande nyckelringslösen → **lämna nya lösenordet tomt** → bekräfta varningen
+4. Reboot. WiFi-lösen som sparats i nyckelringen ska gälla utan fråga.
+
+Alternativ (samma lösen som användarkonto + PAM):
+
+```bash
+# Säkerställ gnome-keyring
+sudo apt install -y gnome-keyring libpam-gnome-keyring
+
+# För lightdm-autologin (vanligt på Pi OS) — lägg till om raderna saknas:
+# /etc/pam.d/lightdm-autologin
+#   auth    optional  pam_gnome_keyring.so
+#   session optional  pam_gnome_keyring.so auto_start
+#
+# /etc/pam.d/lightdm
+#   auth    optional  pam_gnome_keyring.so
+#   session optional  pam_gnome_keyring.so auto_start
+```
+
+Sätt nyckelringens lösenord **identiskt** med användarens inloggningslösen. Vid autologin utan lösenordsruta fungerar tom nyckelringslösenord mer pålitligt.
 
 **Pi Connect**  
 Chromium körs med `--start-fullscreen` (inte hård `--kiosk`). Lämna med F11 eller Alt+Tab.
 
-**`git pull` / försvunnen `config.json`**
+**`git pull` / fel eller gammal `config.json`**
 
-Använd **alltid** `vkc-kiosk pull` — inte rå `git pull`, och **inte** `git stash -u` (det kunde stasha bort config + backup).
-
-Backup utanför repot: `~/.config/vkc-kiosk/config.json`
+Använd **alltid** `vkc-kiosk pull`. Efter manuell edit:
 
 ```bash
-vkc-kiosk restore-config
-# eller:
-cp -a ~/.config/vkc-kiosk/config.json ~/vkc-kiosk/config.json
-ls -lt ~/.config/vkc-kiosk/
+vkc-kiosk save-config    # spegla DIN nuvarande fil till ~/.config/vkc-kiosk/
 ```
+
+Pull återställer bara den kopia som togs **i samma pull** (inte en gammal hem-backup).
 
 ---
 

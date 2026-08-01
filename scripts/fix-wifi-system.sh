@@ -1,17 +1,26 @@
 #!/usr/bin/env bash
 # Flytta WiFi till systemanslutning så lösenordet inte ligger i användarnyckelringen.
 #
-# Symptom som detta löser:
-#   - Ibland: "Ange lösenord" trots att nätet redan är sparat
-#   - "Visa lösenord" visar skräp / fel värde
-#   - Connect gör ingenting efter autologin / omstart
+# Användning:
+#   sudo vkc-kiosk fix-wifi
+#   sudo vkc-kiosk fix-wifi "MittWifi" "losenordet"
 #
 # Kräver: NetworkManager (Pi OS Bookworm standard)
 set -euo pipefail
 
+# nmcli öppnar annars "less/more" och det ser ut som att scriptet stannar efter listan.
+export PAGER=cat
+export SYSTEMD_PAGER=cat
+export NMCLI_NO_PAGER=1
+
 log()  { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mVarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mFel:\033[0m %s\n' "$*" >&2; exit 1; }
+
+nm() {
+  # Alltid utan pager/färgproblem
+  nmcli --nocheck "$@" 2>/dev/null || nmcli "$@"
+}
 
 if [[ "${EUID}" -ne 0 ]]; then
   die "Kör med sudo: sudo vkc-kiosk fix-wifi"
@@ -21,19 +30,23 @@ command -v nmcli >/dev/null 2>&1 || die "nmcli saknas. Är NetworkManager instal
 systemctl is-active --quiet NetworkManager || die "NetworkManager körs inte."
 
 log "Nuvarande anslutningar"
-nmcli -f NAME,UUID,TYPE,DEVICE,FILENAME connection show || true
+nmcli -c no -f NAME,UUID,TYPE,DEVICE,FILENAME connection show 2>/dev/null | cat || \
+  nmcli -f NAME,UUID,TYPE,DEVICE connection show | cat || true
 echo
-nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device status || true
+nmcli -c no -t -f DEVICE,TYPE,STATE,CONNECTION device status 2>/dev/null | cat || true
 
 echo
-echo "Det här sparar WiFi-lösenordet som systemanslutning under"
-echo "/etc/NetworkManager/system-connections/ (bara root kan läsa),"
-echo "inte i din inloggningsnyckelring. Då funkar autoconnect efter"
-echo "reboot utan lösenordsruta."
+echo "============================================================"
+echo " Nästa steg: ange SSID + lösenord (systemanslutning)."
+echo " Eller kör: sudo vkc-kiosk fix-wifi \"SSID\" \"losenord\""
+echo "============================================================"
 echo
 
-mapfile -t WIFI_SSIDS < <(nmcli -t -f SSID device wifi list 2>/dev/null | sed '/^$/d' | sort -u || true)
-ACTIVE_SSID="$(nmcli -t -f ACTIVE,SSID device wifi list 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}' || true)"
+SSID="${1:-}"
+PSK="${2:-}"
+
+mapfile -t WIFI_SSIDS < <(nmcli -c no -t -f SSID device wifi list 2>/dev/null | sed '/^$/d' | sort -u || true)
+ACTIVE_SSID="$(nmcli -c no -t -f ACTIVE,SSID device wifi list 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}' || true)"
 
 if [[ ${#WIFI_SSIDS[@]} -gt 0 ]]; then
   echo "Synliga nät:"
@@ -49,30 +62,46 @@ fi
 
 DEFAULT_SSID="${ACTIVE_SSID:-}"
 if [[ -z "${DEFAULT_SSID}" ]]; then
-  DEFAULT_SSID="$(nmcli -t -f NAME,TYPE connection show 2>/dev/null | awk -F: '$2=="802-11-wireless"{print $1; exit}' || true)"
+  DEFAULT_SSID="$(nmcli -c no -t -f NAME,TYPE connection show 2>/dev/null | awk -F: '$2=="802-11-wireless"{print $1; exit}' || true)"
 fi
 
-read -r -p "SSID [${DEFAULT_SSID}]: " SSID
-SSID="${SSID:-${DEFAULT_SSID}}"
+if [[ -z "${SSID}" ]]; then
+  if [[ ! -t 0 ]]; then
+    die "Ingen SSID angiven och stdin är inte en terminal. Kör: sudo vkc-kiosk fix-wifi \"SSID\" \"losenord\""
+  fi
+  printf 'SSID [%s]: ' "${DEFAULT_SSID}" >&2
+  read -r SSID || true
+  SSID="${SSID:-${DEFAULT_SSID}}"
+fi
 [[ -n "${SSID}" ]] || die "SSID krävs."
 
-read -r -s -p "WiFi-lösenord: " PSK
-echo
+if [[ -z "${PSK}" ]]; then
+  if [[ ! -t 0 ]]; then
+    die "Inget lösenord angivet. Kör: sudo vkc-kiosk fix-wifi \"${SSID}\" \"losenord\""
+  fi
+  printf 'WiFi-lösenord: ' >&2
+  read -r -s PSK || true
+  echo >&2
+fi
 [[ -n "${PSK}" ]] || die "Lösenord krävs."
 
-EXISTING_UUID="$(nmcli -t -f NAME,UUID,TYPE connection show \
-  | awk -F: -v n="${SSID}" '$1==n && $3=="802-11-wireless"{print $2; exit}')"
+EXISTING_UUID="$(nmcli -c no -t -f NAME,UUID,TYPE connection show 2>/dev/null \
+  | awk -F: -v n="${SSID}" '$1==n && $3=="802-11-wireless"{print $2; exit}' || true)"
 
-log "Sparar systemanslutning för '${SSID}' (körs som root → systemfil)"
+log "Sparar systemanslutning för '${SSID}'"
 
-# Ta bort ev. användarprofil med samma namn så vi inte får dubbletter i nyckelringen.
 if [[ -n "${EXISTING_UUID}" ]]; then
-  FILENAME="$(nmcli -g connection.filename connection show "${EXISTING_UUID}" 2>/dev/null || true)"
-  if [[ -n "${FILENAME}" && "${FILENAME}" != /etc/NetworkManager/system-connections/* ]]; then
-    warn "Tar bort användarprofil: ${FILENAME}"
-    nmcli connection delete "${EXISTING_UUID}" >/dev/null
-    EXISTING_UUID=""
-  fi
+  FILENAME="$(nmcli -c no -g connection.filename connection show "${EXISTING_UUID}" 2>/dev/null || true)"
+  case "${FILENAME}" in
+    /etc/NetworkManager/system-connections/*) ;;
+    *)
+      if [[ -n "${FILENAME}" ]]; then
+        warn "Tar bort användarprofil: ${FILENAME}"
+        nmcli connection delete "${EXISTING_UUID}" >/dev/null || true
+        EXISTING_UUID=""
+      fi
+      ;;
+  esac
 fi
 
 if [[ -n "${EXISTING_UUID}" ]]; then
@@ -86,7 +115,6 @@ if [[ -n "${EXISTING_UUID}" ]]; then
     802-11-wireless-security.psk "${PSK}"
   TARGET="${EXISTING_UUID}"
 else
-  # Root-nmcli skapar fil under /etc/NetworkManager/system-connections/
   nmcli connection add \
     type wifi \
     con-name "${SSID}" \
@@ -109,17 +137,21 @@ if ! nmcli connection up "${TARGET}"; then
   nmcli device wifi connect "${SSID}" password "${PSK}" || warn "Kunde inte ansluta just nu."
 fi
 
-FILENAME="$(nmcli -g connection.filename connection show "${TARGET}" 2>/dev/null || true)"
+FILENAME="$(nmcli -c no -g connection.filename connection show "${TARGET}" 2>/dev/null || true)"
 echo
 log "Klart"
 echo "Anslutning: ${TARGET}"
 echo "Fil:        ${FILENAME:-okänd}"
-if [[ -n "${FILENAME}" && "${FILENAME}" == /etc/NetworkManager/system-connections/* ]]; then
-  echo "OK: systemanslutning (överlever reboot utan nyckelring)."
-else
-  warn "Filen ser inte ut som system-connection. Kontrollera: nmcli -f NAME,FILENAME connection show"
-fi
+case "${FILENAME}" in
+  /etc/NetworkManager/system-connections/*)
+    echo "OK: systemanslutning (överlever reboot utan nyckelring)."
+    ;;
+  *)
+    warn "Filen ser inte ut som system-connection. Kontrollera med:"
+    echo "  nmcli -f NAME,FILENAME connection show"
+    ;;
+esac
 echo
 echo "Tips: spara inte WiFi via skrivbordsdialogen — den lägger lösen i nyckelringen igen."
 echo
-nmcli -f NAME,DEVICE,FILENAME connection show --active || true
+nmcli -c no -f NAME,DEVICE,FILENAME connection show --active 2>/dev/null | cat || true

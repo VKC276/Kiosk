@@ -17,11 +17,6 @@ log()  { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mVarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mFel:\033[0m %s\n' "$*" >&2; exit 1; }
 
-nm() {
-  # Alltid utan pager/färgproblem
-  nmcli --nocheck "$@" 2>/dev/null || nmcli "$@"
-}
-
 if [[ "${EUID}" -ne 0 ]]; then
   die "Kör med sudo: sudo vkc-kiosk fix-wifi"
 fi

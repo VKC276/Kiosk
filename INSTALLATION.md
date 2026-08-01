@@ -148,18 +148,43 @@ curl -s http://127.0.0.1:8081/api/cache/lookup/1443137877
 # eller: sudo systemctl restart vkc-kiosk
 ```
 
-### Slides (övre skärmytan)
+### Slides / karusell (övre skärmytan)
+
+Enklast: `vkc-kiosk slides` (webbadress, ordning, visningstid, **refresh-intervall**).
 
 ```json
 "KIOSK": {
   "checkin": { "enabled": true, "path": "/checkin", "heightPercent": 20 },
-  "reloadOnShow": true,
+  "reloadOnShow": false,
+  "reloadIntervalSeconds": 300,
   "slides": [
-    { "id": "top-sends", "title": "Topp Senders", "url": "https://...", "durationSeconds": 100 },
-    { "id": "chart-1", "title": "Diagram", "url": "https://...", "durationSeconds": 15 }
+    {
+      "id": "live-stats",
+      "title": "Live",
+      "url": "https://...",
+      "durationSeconds": 30,
+      "reloadIntervalSeconds": 120
+    },
+    {
+      "id": "info",
+      "title": "Info",
+      "url": "https://...",
+      "durationSeconds": 20,
+      "reloadIntervalSeconds": 0
+    }
   ]
 }
 ```
+
+| Fält | Betydelse |
+|------|-----------|
+| `durationSeconds` | Hur länge sidan visas i karusellen |
+| `KIOSK.reloadIntervalSeconds` | Standard-refresh om slide saknar eget värde |
+| `slides[].reloadIntervalSeconds` | Egen refresh för sidan (sekunder) |
+| `…: 120` | Hämta om tidigast var 2:e minut när sidan visas |
+| `…: 0` | Aldrig omhämtning (statiskt tills kiosk-omstart) |
+| saknas | Använd global standard |
+| `reloadOnShow: true` | Gammalt läge: ladda om vid varje bildbyte |
 
 Incheckningen ligger kvar längst ner. Sidor byts automatiskt — ingen Space behövs.
 

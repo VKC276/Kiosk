@@ -1,0 +1,58 @@
+{
+  "READER": {
+    "device": "/dev/input/event0",
+    "nameContains": "SDZNKJLTD USB Reader",
+    "grab": true,
+    "backend": "usb",
+    "usbVendor": "0xffff",
+    "usbProduct": "0x0035"
+  },
+  "SERVER": {
+    "host": "0.0.0.0",
+    "port": 8081
+  },
+  "CACHE": {
+    "updateIntervalSeconds": 1800,
+    "fetchTimeoutSeconds": 30,
+    "userAgent": "Mifare Reader Backend"
+  },
+  "TIMEOUTS": {
+    "statusDisplaySeconds": 3,
+    "lastClipOkSeconds": 3,
+    "lastClipReturnSeconds": 5,
+    "logRequestSeconds": 5,
+    "clipRequestSeconds": 10,
+    "sseHeartbeatSeconds": 20
+  },
+  "CARD_PROCESSING": {
+    "FORMAT": "HEX10",
+    "BYTE_ORDER": "REVERSED",
+    "NIBBLE_ORDER": "REVERSED",
+    "hexUidChars": 8,
+    "minIdLength": 5,
+    "maxIdLength": 10,
+    "decimalPadLength": 10
+  },
+  "DATA_URL": "https://script.google.com/macros/s/REPLACE_ME/exec",
+  "LOG_URL": "https://script.google.com/macros/s/REPLACE_ME/exec",
+  "TEN_VISIT_DATA_URL": "https://script.google.com/macros/s/REPLACE_ME/exec",
+  "GAS_UPDATE_URL_BASE": "https://script.google.com/macros/s/REPLACE_ME/exec",
+  "KIOSK": {
+    "checkin": {
+      "enabled": true,
+      "path": "/checkin",
+      "heightPercent": 20
+    },
+    "reloadOnShow": false,
+    "reloadIntervalSeconds": 300,
+    "slides": [
+      {
+        "id": "wallflow",
+        "title": "WallFlow statistik",
+        "url": "https://wallflow.vastervikclimbing.se/display.html",
+        "durationSeconds": 15,
+        "reloadIntervalSeconds": 900
+      }
+    ]
+  }
+}

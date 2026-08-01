@@ -45,25 +45,29 @@
         "id": "top-sends",
         "title": "Topp Senders per led",
         "url": "https://script.google.com/macros/s/AKfycbx7j97ZTc747SpoWU3GF3Kv9d9RLwJiqtHpXRYaYSm1emcExqvUtYyr4A-m9CNJ5ddSxw/exec",
-        "durationSeconds": 100
+        "durationSeconds": 100,
+        "reloadIntervalSeconds": 180
       },
       {
         "id": "sends-per-day",
         "title": "Antal sändningar per dag",
         "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vS6IMv3bGw9e7xm_L5TTs9ipMnICRvZueuyv9QN_tOcw_RJO9xA-CKnTq6yBjwxBmgHEZ1UqbpPhsBa/pubchart?oid=1248229822&format=interactive",
-        "durationSeconds": 15
+        "durationSeconds": 15,
+        "reloadIntervalSeconds": 300
       },
       {
         "id": "grade-distribution",
         "title": "Fördelning av sändningar per svårighetsgrad",
         "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vS6IMv3bGw9e7xm_L5TTs9ipMnICRvZueuyv9QN_tOcw_RJO9xA-CKnTq6yBjwxBmgHEZ1UqbpPhsBa/pubchart?oid=389844657&format=interactive",
-        "durationSeconds": 15
+        "durationSeconds": 15,
+        "reloadIntervalSeconds": 600
       },
       {
         "id": "wallflow",
         "title": "WallFlow statistik",
         "url": "https://wallflow.vastervikclimbing.se/display.html",
-        "durationSeconds": 60
+        "durationSeconds": 60,
+        "reloadIntervalSeconds": 120
       }
     ],
     "reloadIntervalSeconds": 300

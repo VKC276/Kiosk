@@ -928,11 +928,18 @@ def normalize_kiosk_slides(raw_slides):
             duration_ms = int(float(slide["durationSeconds"]) * 1000)
         if duration_ms is None:
             duration_ms = 30000
+        reload_interval = slide.get("reloadIntervalSeconds")
+        if reload_interval is not None:
+            try:
+                reload_interval = int(reload_interval)
+            except (TypeError, ValueError):
+                reload_interval = None
         slides.append({
             "id": slide.get("id") or f"slide-{index + 1}",
             "title": slide.get("title") or slide.get("id") or f"Slide {index + 1}",
             "url": slide["url"],
             "durationMs": max(1000, int(duration_ms)),
+            "reloadIntervalSeconds": reload_interval,
         })
     return slides
 

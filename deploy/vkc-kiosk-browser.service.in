@@ -11,12 +11,19 @@ Group=__KIOSK_USER__
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/__KIOSK_USER__/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/__KIOSK_UID__
-ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do curl -fsS http://127.0.0.1:__SERVER_PORT__/healthz >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/__KIOSK_UID__/bus
+# Vänta tills grafisk session har runtime-dir (annars saknas DBus/Wayland-socket).
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do [[ -d /run/user/__KIOSK_UID__ ]] && exit 0; sleep 1; done; exit 0'
+# --max-time krävs: utan den kan curl hänga om API-workern blockeras (t.ex. PyUSB).
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 90); do curl -fsS --max-time 2 http://127.0.0.1:__SERVER_PORT__/healthz >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
 ExecStart=__KIOSK_DIR__/deploy/start-browser.sh
+# Stoppa Chromium-profilen vid restart/stop så nästa start inte exit:ar tomt.
+ExecStop=/bin/bash -c 'pkill -f -- "--user-data-dir=/home/__KIOSK_USER__/.config/vkc-kiosk-chromium" || true'
 # Inte Restart=always — Chromium kan lämna processer kvar; always öppnar då nya flikar i loop.
 Restart=on-failure
-RestartSec=10
-TimeoutStartSec=90
+RestartSec=5
+TimeoutStartSec=120
+KillMode=control-group
 StandardOutput=journal
 StandardError=journal
 

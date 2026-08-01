@@ -17,6 +17,29 @@ PROFILE_DIR="${HOME}/.config/vkc-kiosk-chromium"
 LOCK_FILE="${PROFILE_DIR}/.start.lock"
 mkdir -p "${PROFILE_DIR}"
 
+# Systemd saknar ofta session-DBus → Chromium loggar "Unknown address type".
+UID_NUM="$(id -u)"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${UID_NUM}}"
+export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
+if [[ -S "${RUNTIME_DIR}/bus" ]]; then
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=${RUNTIME_DIR}/bus"
+elif [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+  unset DBUS_SESSION_BUS_ADDRESS || true
+fi
+
+if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+  for candidate in wayland-0 wayland-1; do
+    if [[ -S "${RUNTIME_DIR}/${candidate}" ]]; then
+      export WAYLAND_DISPLAY="${candidate}"
+      break
+    fi
+  done
+fi
+export DISPLAY="${DISPLAY:-:0}"
+if [[ -z "${XAUTHORITY:-}" && -f "${HOME}/.Xauthority" ]]; then
+  export XAUTHORITY="${HOME}/.Xauthority"
+fi
+
 BROWSER=""
 for candidate in chromium-browser chromium google-chrome google-chrome-stable; do
   if command -v "${candidate}" >/dev/null 2>&1; then
@@ -30,27 +53,36 @@ if [[ -z "${BROWSER}" ]]; then
   exit 1
 fi
 
-# En enda instans per profil — annars öppnar Chromium bara en ny flik
+# En enda start i taget. Misslyckad lock = annan start pågår → fail (systemd retry),
+# INTE exit 0 (det lämnar tjänsten "lyckad" utan fönster).
 exec 9>"${LOCK_FILE}"
 if ! flock -n 9; then
-  echo "VKC Kiosk-browser körs redan (lock ${LOCK_FILE}) — ingen ny start."
-  exit 0
+  echo "VKC Kiosk-browser: lock upptagen (${LOCK_FILE}) — försök igen." >&2
+  exit 1
 fi
 
-# Om en Chromium med samma profil redan lever: låt den vara
+# Städa ev. kvarvarande profilprocesser innan ny start (efter manuell kill / krasch).
 if pgrep -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1; then
-  echo "Chromium med kiosk-profil körs redan — ingen ny start."
-  exit 0
+  echo "Hittade gammal Chromium med kiosk-profil — stoppar den före omstart."
+  pkill -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1 || true
+  sleep 1
+  pkill -9 -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1 || true
+  sleep 0.5
 fi
 
-if command -v xset >/dev/null 2>&1; then
+# Chromium SingletonLock kan blockera ny start efter hård kill
+rm -f "${PROFILE_DIR}/SingletonLock" \
+      "${PROFILE_DIR}/SingletonCookie" \
+      "${PROFILE_DIR}/SingletonSocket" 2>/dev/null || true
+
+if [[ -z "${WAYLAND_DISPLAY:-}" ]] && command -v xset >/dev/null 2>&1; then
   xset s off >/dev/null 2>&1 || true
   xset -dpms >/dev/null 2>&1 || true
   xset s noblank >/dev/null 2>&1 || true
 fi
 
-# Behåll denna process som förgrund (viktigt för systemd).
-# Ingen --kiosk (hårdlås); fullskärm räcker för Pi Connect.
+echo "Startar ${BROWSER} → ${URL} (DISPLAY=${DISPLAY:-?} WAYLAND=${WAYLAND_DISPLAY:--} DBUS=${DBUS_SESSION_BUS_ADDRESS:-unset})"
+
 exec "${BROWSER}" \
   --start-fullscreen \
   --user-data-dir="${PROFILE_DIR}" \

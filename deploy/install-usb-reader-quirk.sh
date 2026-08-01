@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# SDZNKJLTD USB Reader (ffff:0035) på Raspberry Pi.
-# Stoppar usbhid helt via usbcore.authorized_default=0 + udev.
+# YAROGNTEC / SDZNKJLTD USB Reader (ffff:0035) på Raspberry Pi.
+# Stoppar usbhid via usbcore.authorized_default=0 + udev + quirks.
 # Appen läser iface 0 via PyUSB.
+#
+# Föredragen entrypoint för användare:
+#   sudo ./scripts/setup-yarogntec-reader.sh
+#   sudo vkc-kiosk setup-reader
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,6 +98,12 @@ echo "  cat /proc/cmdline | tr ' ' '\\n' | grep -E 'authorized_default|usbhid.qu
 echo "  # Båda måste synas (authorized_default=0 är kritisk)"
 echo
 echo "Vid inkoppling:"
-echo "  journalctl -t vkc-kiosk -n 5   # 'SDZNKJLTD reader prepared...'"
-echo "  dmesg: INGEN hid-generic, INGEN usbhid iface 1-fel, INGEN HC died"
+echo "  journalctl -t vkc-kiosk -n 20"
+echo "  # ska innehålla: usbhid unloaded before authorize + reader prepared"
+echo "  dmesg: INGEN usbhid 1-2.x:1.1-fel, INGEN HC died"
 echo "Sedan: sudo systemctl restart vkc-kiosk && journalctl -u vkc-kiosk -f"
+echo
+echo "OBS: Har du USB-tangentbord (t.ex. ActiveJet) — blacklista INTE usbhid."
+echo "Prepare-scriptet behåller tangentbordet och sätter ignore-quirk live."
+echo "Om iface-1-felet kvarstår med tangentbord inkopplat: koppla ur tangentbordet,"
+echo "starta om, testa läsaren; eller byt till enkel HID keyboard-wedge-läsare."

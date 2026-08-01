@@ -169,26 +169,22 @@ def unique_id(slides: list[dict], base: str) -> str:
     return f"{base}-{n}"
 
 
-def list_slides(slides: list[dict], global_default: int = 300) -> None:
+def list_slides(slides: list[dict]) -> None:
     if not slides:
         print("\n(Karusellen är tom)")
         return
     print("\nNuvarande karusell:")
-    print(f"Global refresh-default: {global_default}s (KIOSK.reloadIntervalSeconds)")
-    print(f"{'#':>3}  {'VISA':>5}  {'REFRESH':<14}  {'ID':<18}  TITEL / URL")
-    print("-" * 86)
+    print(f"{'#':>3}  {'TID':>5}  {'ID':<22}  TITEL / URL")
+    print("-" * 78)
     for i, slide in enumerate(slides, 1):
         title = slide.get("title") or slide.get("id") or "(utan titel)"
         url = slide.get("url") or ""
-        sid = str(slide.get("id") or "")[:18]
-        refresh = slide_reload_label(slide, global_default)
-        print(
-            f"{i:>3}  {slide_duration_seconds(slide):>4}s  {refresh:<14}  {sid:<18}  {title}"
-        )
-        print(f"{'':>3}  {'':>5}  {'':<14}  {'':<18}  {url}")
+        sid = str(slide.get("id") or "")[:22]
+        print(f"{i:>3}  {slide_duration_seconds(slide):>4}s  {sid:<22}  {title}")
+        print(f"{'':>3}  {'':>5}  {'':<22}  {url}")
 
 
-def cmd_add(slides: list[dict], global_default: int) -> None:
+def cmd_add(slides: list[dict]) -> None:
     print("\n— Lägg till sida —")
     while True:
         try:
@@ -200,7 +196,6 @@ def cmd_add(slides: list[dict], global_default: int) -> None:
     default_title = urlparse(url).netloc or "Ny sida"
     title = prompt("Titel (visningsnamn)", default_title)
     duration = prompt_int("Visningstid i sekunder", 30, minimum=1)
-    reload_interval = prompt_reload_interval(None, global_default)
     position = prompt_int(
         f"Ordning (1 = först, {len(slides) + 1} = sist)",
         len(slides) + 1,
@@ -214,16 +209,15 @@ def cmd_add(slides: list[dict], global_default: int) -> None:
         "url": url,
         "durationSeconds": duration,
     }
-    apply_reload_interval(slide, reload_interval)
     slides.insert(position - 1, slide)
     print(f"Tillagd på plats {position}: {title}")
 
 
-def cmd_remove(slides: list[dict], global_default: int) -> None:
+def cmd_remove(slides: list[dict]) -> None:
     if not slides:
         print("Inget att ta bort.")
         return
-    list_slides(slides, global_default)
+    list_slides(slides)
     index = prompt_int("Nummer att ta bort", minimum=1)
     if index > len(slides):
         print("Ogiltigt nummer.")
@@ -237,17 +231,17 @@ def cmd_remove(slides: list[dict], global_default: int) -> None:
     print("Borttagen.")
 
 
-def cmd_edit(slides: list[dict], global_default: int) -> None:
+def cmd_edit(slides: list[dict]) -> None:
     if not slides:
         print("Inget att ändra.")
         return
-    list_slides(slides, global_default)
+    list_slides(slides)
     index = prompt_int("Nummer att ändra", minimum=1)
     if index > len(slides):
         print("Ogiltigt nummer.")
         return
     slide = slides[index - 1]
-    print("\nLämna tomt / defaultvärde för att behålla nuvarande värde där det anges.")
+    print("\nLämna tomt för att behålla nuvarande värde.")
 
     try:
         url_in = prompt("Webbadress", slide.get("url") or "")
@@ -263,7 +257,6 @@ def cmd_edit(slides: list[dict], global_default: int) -> None:
         minimum=1,
     )
     slide.pop("durationMs", None)
-    apply_reload_interval(slide, prompt_reload_interval(slide, global_default))
 
     new_pos = prompt_int("Ordning", index, minimum=1)
     new_pos = min(new_pos, len(slides))
@@ -273,11 +266,11 @@ def cmd_edit(slides: list[dict], global_default: int) -> None:
     print("Uppdaterad.")
 
 
-def cmd_move(slides: list[dict], global_default: int) -> None:
+def cmd_move(slides: list[dict]) -> None:
     if len(slides) < 2:
         print("Behöver minst två sidor för att ändra ordning.")
         return
-    list_slides(slides, global_default)
+    list_slides(slides)
     index = prompt_int("Vilken sida ska flyttas?", minimum=1)
     if index > len(slides):
         print("Ogiltigt nummer.")
@@ -301,20 +294,19 @@ def main() -> int:
 
     cfg = load_config()
     slides = slides_of(cfg)
-    global_default = global_reload_default(cfg)
     dirty = False
 
     actions = {
-        "1": ("Lista sidor", lambda: list_slides(slides, global_default)),
-        "2": ("Lägg till sida", lambda: cmd_add(slides, global_default)),
-        "3": ("Ta bort sida", lambda: cmd_remove(slides, global_default)),
-        "4": ("Ändra sida (url/tid/refresh/ordning)", lambda: cmd_edit(slides, global_default)),
-        "5": ("Flytta ordning", lambda: cmd_move(slides, global_default)),
+        "1": ("Lista sidor", lambda: list_slides(slides)),
+        "2": ("Lägg till sida", lambda: cmd_add(slides)),
+        "3": ("Ta bort sida", lambda: cmd_remove(slides)),
+        "4": ("Ändra sida (url/tid/ordning)", lambda: cmd_edit(slides)),
+        "5": ("Flytta ordning", lambda: cmd_move(slides)),
         "s": ("Spara till config.json", None),
         "q": ("Avsluta", None),
     }
 
-    list_slides(slides, global_default)
+    list_slides(slides)
 
     while True:
         print("\nVälj:")

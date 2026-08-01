@@ -26,6 +26,7 @@ html, body {
 /* Bakgrundsfärgen styrs av den klass som Jinja/JS applicerar */
 body.status-green { background-color: #4CAF50 !important; }
 body.status-yellow { background-color: #FFC107 !important; }
+body.status-orange { background-color: #FF9800 !important; } /* sista klipp / varning */
 body.status-red { background-color: #F44336 !important; }
 body.status-gray { background-color: #E0E0E0 !important; }
 /* NYA KLASSER FÖR 10-KORT */
@@ -156,7 +157,7 @@ h1 {
  // Se till att filerna success.mp3, failure.mp3 och warning.mp3 ligger i mappen static/
  const audioSuccess = new Audio('/static/success.mp3'); // Godkänd (ACTIVE, TENCARD_CLIPPED_OK, TENCARD_READY)
  const audioFailure = new Audio('/static/failure.mp3'); // Misslyckad (EXPIRED, NOT_FOUND, TENCARD_EXHAUSTED etc.)
- const audioWarning = new Audio('/static/warning.mp3'); // Varning (EXPIRING_SOON)
+ const audioWarning = new Audio('/static/warning.mp3'); // Varning (EXPIRING_SOON, sista klipp)
 
  let lastPlayedStatus = null;
 
@@ -169,8 +170,8 @@ h1 {
   ) {
    // Godkända statusar
    audioSuccess.play().catch(e => console.error("Kunde inte spela upp godkänd-ljud:", e));
-  } else if (status === 'EXPIRING_SOON') {
-   // Varning
+  } else if (status === 'EXPIRING_SOON' || status === 'TENCARD_CLIPPED_LAST') {
+   // Varning vid sista klippets fas 1 ("Klipp OK!"). Fas 2 är tyst.
    audioWarning.play().catch(e => console.error("Kunde inte spela upp varning-ljud:", e));
   } else if (
     status === 'EXPIRED' || 
@@ -184,8 +185,8 @@ h1 {
    // Misslyckade statusar
    audioFailure.play().catch(e => console.error("Kunde inte spela upp misslyckad-ljud:", e));
   }
+  // CACHE_LOADING / TENCARD_PROCESSING: inget ljud
  
-  // Spela inte ljud för den tillfälliga statusen "TENCARD_PROCESSING"
   lastPlayedStatus = status; // Uppdatera senast spelade status
  }
  // -------------------------

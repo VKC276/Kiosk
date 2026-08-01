@@ -20,9 +20,10 @@ Drift
   url                 Skriv ut lokal kiosk-URL
 
 Kod & config
-  pull                git pull (behåller config.json; stashar övrigt)
+  pull                git pull (behåller config.json; stashar bara tracked)
   update              pull + pip + ominstallation/restart
   config              Öppna config.json i \$EDITOR
+  restore-config      Återställ config.json från ~/.config/vkc-kiosk/
 
 Kortläsare & kiosk
   setup-reader        YAROGNTEC/SDZNKJLTD systemfix (sudo + reboot)
@@ -59,57 +60,137 @@ cmd_restart() {
   cmd_status
 }
 
-cmd_pull() {
-  # config.json ska ALDRIG komma från git. Backup → (unstash kod) → pull → restore.
-  cd "${ROOT_DIR}"
-  local branch backup stash_msg dirty=0
-  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
-  backup="${ROOT_DIR}/config.json.localbak"
-  stash_msg="vkc-kiosk pull auto-stash $(date -Iseconds 2>/dev/null || date)"
+config_backup_dir() {
+  # UTANFÖR git-repot så stash -u aldrig kan ta bort backupen.
+  local home_dir="${HOME:-/home/${SUDO_USER:-dev}}"
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    home_dir="$(getent passwd "${SUDO_USER}" | cut -d: -f6)"
+    home_dir="${home_dir:-/home/${SUDO_USER}}"
+  fi
+  echo "${home_dir}/.config/vkc-kiosk"
+}
 
-  if [[ ! -f "${ROOT_DIR}/config.json" ]]; then
-    echo "Varning: config.json saknas innan pull." >&2
-  else
-    cp -a "${ROOT_DIR}/config.json" "${backup}"
-    echo "Säkerhetskopia: ${backup}"
+backup_config() {
+  local src="${ROOT_DIR}/config.json"
+  local dir stamp dest_stable dest_stamp dest_local
+  dir="$(config_backup_dir)"
+  mkdir -p "${dir}"
+  dest_stable="${dir}/config.json"
+  dest_local="${ROOT_DIR}/config.json.localbak"
+  stamp="$(date +%Y%m%d-%H%M%S 2>/dev/null || echo now)"
+  dest_stamp="${dir}/config-${stamp}.json"
+
+  if [[ ! -f "${src}" ]]; then
+    # Försök återskapa från tidigare säker kopia innan pull
+    if [[ -f "${dest_stable}" ]]; then
+      cp -a "${dest_stable}" "${src}"
+      echo "Återställde saknad config.json från ${dest_stable}" >&2
+      return 0
+    fi
+    echo "Varning: config.json saknas (ingen backup i ${dir})." >&2
+    return 1
   fi
 
-  # Sluta tracka config lokalt (äldre kloner) innan pull kan skriva över den.
+  cp -a "${src}" "${dest_stable}"
+  cp -a "${src}" "${dest_stamp}"
+  cp -a "${src}" "${dest_local}"
+  # Behåll max 10 tidsstämplade kopior
+  ls -1t "${dir}"/config-*.json 2>/dev/null | tail -n +11 | xargs -r rm -f || true
+  echo "Säkerhetskopia: ${dest_stable}"
+  echo "                ${dest_stamp}"
+  return 0
+}
+
+restore_config() {
+  local dest="${ROOT_DIR}/config.json"
+  local dir stable localbak
+  dir="$(config_backup_dir)"
+  stable="${dir}/config.json"
+  localbak="${ROOT_DIR}/config.json.localbak"
+
+  if [[ -f "${stable}" ]]; then
+    cp -a "${stable}" "${dest}"
+    echo "Återställde config.json från ${stable}"
+    return 0
+  fi
+  if [[ -f "${localbak}" ]]; then
+    cp -a "${localbak}" "${dest}"
+    echo "Återställde config.json från ${localbak}"
+    return 0
+  fi
+  return 1
+}
+
+cmd_pull() {
+  # config.json får ALDRIG försvinna eller ersättas av git/example.
+  # Bug som orsakat dataförlust: stash -u kunde stasha bort både config
+  # och config.json.localbak innan restore hann köras.
+  cd "${ROOT_DIR}"
+  local branch stash_msg dirty=0 had_config=0 rc=0
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+  stash_msg="vkc-kiosk pull auto-stash $(date -Iseconds 2>/dev/null || date)"
+
+  if [[ -f "${ROOT_DIR}/config.json" ]]; then
+    had_config=1
+  fi
+  backup_config || true
+
+  # Sluta tracka config lokalt (äldre kloner).
   if git ls-files --error-unmatch config.json >/dev/null 2>&1; then
     git rm --cached -f config.json >/dev/null 2>&1 || true
   fi
 
-  if ! git diff --quiet || ! git diff --cached --quiet \
-     || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+  # Stasha BARA tracked ändringar — aldrig -u (untracked), annars riskerar
+  # config.json / localbak att försvinna från working tree.
+  if ! git diff --quiet || ! git diff --cached --quiet; then
     dirty=1
-    echo "Lokala kodändringar hittades — sparar i git stash innan pull..."
-    git stash push -u -m "${stash_msg}" || {
-      echo "Kunde inte stash:a lokala ändringar. Avbryter." >&2
-      [[ -f "${backup}" ]] && cp -a "${backup}" "${ROOT_DIR}/config.json"
+    echo "Lokala kodändringar hittades — sparar i git stash (bara tracked)..."
+    git stash push -m "${stash_msg}" || {
+      echo "Kunde inte stash:a. Avbryter." >&2
+      restore_config || true
       return 1
     }
     echo "Stash: ${stash_msg}"
   fi
 
-  local rc=0
   git pull --ff-only origin "${branch}" || rc=$?
 
-  # Alltid återställ config från backup tagen FÖRE stash/pull.
-  if [[ -f "${backup}" ]]; then
-    cp -a "${backup}" "${ROOT_DIR}/config.json"
-    echo "Återställde din lokala config.json från ${backup}"
-  elif [[ ! -f "${ROOT_DIR}/config.json" && -f "${ROOT_DIR}/config.example.json" ]]; then
-    cp -a "${ROOT_DIR}/config.example.json" "${ROOT_DIR}/config.json"
-    echo "Varning: skapade config.json från example — fyll i dina URL:er." >&2
+  # Alltid återställ skyddad config (aldrig config.example.json automatiskt).
+  if ! restore_config; then
+    if [[ "${had_config}" -eq 1 ]]; then
+      echo "FEL: config.json fanns före pull men kunde inte återställas." >&2
+      echo "Kolla: ls -la \"$(config_backup_dir)\" ; git stash list" >&2
+      rc=1
+    elif [[ -f "${ROOT_DIR}/config.example.json" && ! -f "${ROOT_DIR}/config.json" ]]; then
+      echo "Varning: ingen config.json. Kopiera manuellt:" >&2
+      echo "  cp config.example.json config.json   # och fyll i dina värden" >&2
+    fi
   fi
 
   if [[ "${rc}" -ne 0 ]]; then
-    echo "git pull misslyckades (kod ${rc})." >&2
+    echo "git pull misslyckades eller config-skydd fel (kod ${rc})." >&2
     if [[ "${dirty}" -eq 1 ]]; then
-      echo "Lokala filer ligger kvar i stash — se: git stash list" >&2
+      echo "Lokala filer kan ligga i stash — se: git stash list" >&2
     fi
   fi
   return "${rc}"
+}
+
+cmd_restore_config() {
+  cd "${ROOT_DIR}"
+  local dir
+  dir="$(config_backup_dir)"
+  echo "Backupkatalog: ${dir}"
+  ls -la "${dir}" 2>/dev/null || echo "(tom / saknas)"
+  echo
+  if restore_config; then
+    echo "Klart. Starta om: vkc-kiosk restart"
+  else
+    echo "Ingen backup hittades. Leta i git stash:" >&2
+    echo "  git stash list" >&2
+    echo "  git stash show -p stash@{0} -- config.json | head" >&2
+    return 1
+  fi
 }
 
 cmd_update() {
@@ -172,6 +253,7 @@ main() {
     update)  cmd_update ;;
     pull)    cmd_pull ;;
     config)  "${EDITOR:-nano}" "${ROOT_DIR}/config.json" ;;
+    restore-config) cmd_restore_config ;;
     url)     echo "http://127.0.0.1:$(port)/" ;;
     setup-reader) cmd_setup_reader ;;
     configure-reader) cmd_configure_reader "$@" ;;

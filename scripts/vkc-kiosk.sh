@@ -10,20 +10,28 @@ usage() {
   cat <<EOF
 Användning: vkc-kiosk <kommando>
 
-  status              Visa tjänstestatus + healthz
-  restart             Starta om API (och browser om den finns)
-  stop                Stoppa tjänster
-  start               Starta tjänster
+Drift
+  status              Tjänstestatus + /healthz
+  start               Starta API
+  stop                Stoppa browser + API
+  restart             Starta om API (+ browser) och visa status
   logs                Följ journal-loggar
-  devices             Lista input-enheter (kortläsare)
-  update              git pull (behåller config.json) + pip + restart
-  pull                git pull och behåller din lokala config.json
-  config              Öppna config.json i \$EDITOR
+  devices             Lista input-/USB-läsare
   url                 Skriv ut lokal kiosk-URL
-  setup-reader        Installera YAROGNTEC/SDZNKJLTD USB-fix (systemändringar)
-  configure-reader    Interaktiv assistent: läsare + kortformat → config.json
-  slides              Hantera karusell: lägg till/ta bort URL, ordning, tid
-  fix-wifi            Spara WiFi som systemanslutning (undvik nyckelrings-prompt)
+
+Kod & config
+  pull                git pull (behåller config.json; stashar övrigt)
+  update              pull + pip + ominstallation/restart
+  config              Öppna config.json i \$EDITOR
+
+Kortläsare & kiosk
+  setup-reader        YAROGNTEC/SDZNKJLTD systemfix (sudo + reboot)
+  configure-reader    Välj läsare + kortformat → config.json
+  slides              Karusell: URL, ordning, tid, refresh  (alias: karusell)
+  fix-wifi            Spara WiFi utan nyckelring (netplan/NM)  (alias: wifi)
+                      Exempel: sudo vkc-kiosk fix-wifi 'SSID' 'lösen!'
+
+Dokumentation: INSTALLATION.md och README.md i git-repot.
 EOF
 }
 

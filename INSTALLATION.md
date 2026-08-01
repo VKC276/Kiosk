@@ -243,21 +243,69 @@ Lägg i `~/vkc-kiosk/static/`:
 
 ---
 
-## Daglig drift
+## Verktyg — `vkc-kiosk`
 
-| Kommando | Vad det gör |
-|----------|-------------|
-| `vkc-kiosk status` | Status + healthz |
-| `vkc-kiosk restart` | Starta om API + browser |
-| `vkc-kiosk devices` | Lista input-enheter |
-| `vkc-kiosk setup-reader` | YAROGNTEC systemfix (kräver sudo + reboot) |
-| `vkc-kiosk configure-reader` | Välj läsare + kortformat → `config.json` |
-| `vkc-kiosk slides` | Hantera karusell (URL, ordning, visningstid) |
-| `vkc-kiosk fix-wifi` | Spara WiFi som systemanslutning (utan nyckelring) |
-| `vkc-kiosk update` | `git pull` + pip + ominstallation |
-| `vkc-kiosk logs` | Följ journal-loggar |
-| `vkc-kiosk config` | Öppna `config.json` |
-| `vkc-kiosk url` | Visa lokal URL |
+Kommandot installeras som `/usr/local/bin/vkc-kiosk` och pekar på `scripts/vkc-kiosk.sh`.  
+Visa inbyggd hjälp: `vkc-kiosk` / `vkc-kiosk help`.
+
+### Översikt
+
+| Kommando | sudo? | Vad det gör |
+|----------|-------|-------------|
+| `status` | nej | Status för `vkc-kiosk` + `vkc-kiosk-browser` och `GET /healthz` |
+| `start` | ja | Starta API-tjänsten |
+| `stop` | ja | Stoppa browser + API |
+| `restart` | ja | Starta om API (+ browser om den finns) och visa status |
+| `logs` | ja | `journalctl -f` för API och browser |
+| `devices` | nej | Lista kortläsare (evdev/USB) + `/api/input-devices` |
+| `pull` | nej | `git pull` på aktuell branch; **behåller** `config.json` (backup `config.json.localbak`); stashar övriga lokala filändringar |
+| `update` | delvis | `pull` + `pip install -r requirements.txt` + `install.sh`/`restart` |
+| `config` | nej | Öppna `config.json` i `$EDITOR` (standard `nano`) |
+| `url` | nej | Skriv ut `http://127.0.0.1:<port>/` |
+| `setup-reader` | **ja** | YAROGNTEC/SDZNKJLTD (`ffff:0035`): cmdline, udev, quirk — **reboot efteråt** |
+| `configure-reader` | nej* | Interaktiv läsare + kortformat → `config.json` (*stoppar tjänsten tillfälligt) |
+| `slides` | nej | Hantera karusell (`KIOSK.slides`): URL, ordning, `durationSeconds`, `reloadIntervalSeconds`. Alias: `karusell` |
+| `fix-wifi` | **ja** | Spara WiFi utan nyckelring (netplan `99-vkc-kiosk-wifi.yaml` eller NM system-connection). Alias: `wifi` |
+
+`config.json` ligger **inte** i git. Mall vid ny install: `config.example.json`.
+
+### Exempel
+
+```bash
+# Drift
+vkc-kiosk status
+vkc-kiosk restart
+vkc-kiosk logs
+
+# Hämta kod (skyddar din config)
+vkc-kiosk pull
+vkc-kiosk update
+
+# Kortläsare
+sudo vkc-kiosk setup-reader    # bara YAROGNTEC — sedan: sudo reboot
+vkc-kiosk configure-reader
+vkc-kiosk devices
+
+# Karusell / slides
+vkc-kiosk slides
+
+# WiFi som funkar efter autologin/reboot (enkla citattecken om lösen har !)
+sudo vkc-kiosk fix-wifi 'Mobile-bridge_24' 'lösenord!'
+
+# Config
+vkc-kiosk config
+vkc-kiosk url
+```
+
+### Script bakom kommandona
+
+| CLI | Script |
+|-----|--------|
+| `setup-reader` | `scripts/setup-yarogntec-reader.sh` → `deploy/install-usb-reader-quirk.sh` |
+| `configure-reader` | `scripts/configure-card-reader.py` |
+| `slides` | `scripts/manage-slides.py` |
+| `fix-wifi` | `scripts/fix-wifi-system.sh` |
+| `devices` | `scripts/list_input_devices.py` (+ API) |
 
 ### API-hjälp
 

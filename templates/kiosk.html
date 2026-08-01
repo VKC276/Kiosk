@@ -103,18 +103,17 @@
       {% for slide in slides %}
       <div
         class="rotator-slide{% if loop.first %} active{% endif %}"
+        data-slide-id="{{ slide.id|e }}"
         data-duration-ms="{{ slide.durationMs }}"
-        data-url="{{ slide.url|e }}"
         {% if slide.reloadIntervalSeconds is not none %}data-reload-interval-sec="{{ slide.reloadIntervalSeconds }}"{% endif %}
         id="slide-{{ slide.id }}"
       >
+        {# URL sätts via JSON + JS (bevarar #blå/#grön m.m.) — inte i src/data-base #}
         <iframe
           id="iframe-{{ slide.id }}"
           title="{{ slide.title|e }}"
           tabindex="-1"
           loading="{% if loop.first or loop.index0 < 2 %}eager{% else %}lazy{% endif %}"
-          data-base="{{ slide.url|e }}"
-          {% if loop.first %}src="{{ slide.url|e }}"{% endif %}
         ></iframe>
       </div>
       {% endfor %}
@@ -135,11 +134,17 @@
     {% endif %}
   </div>
 
+  <script id="kiosk-slide-data" type="application/json">{{ slides|tojson }}</script>
   <script>
-    // reloadOnShow=true: gamla beteendet (ladda om vid varje byte).
-    // Annars behålls iframe-innehåll; omhämtning bara om reloadIntervalSeconds gått.
+    // URL:er inklusive #hash kommer via JSON (inte HTML-attribut) så #blå/#grön bevaras.
+    // reloadOnShow=true: ladda om vid varje byte.
+    // Annars behålls iframe; omhämtning när reloadIntervalSeconds gått.
     const RELOAD_ON_SHOW = {% if reload_on_show|default(false) %}true{% else %}false{% endif %};
     const RELOAD_INTERVAL_MS = {% if reload_interval_ms is defined and reload_interval_ms is not none %}{{ reload_interval_ms|int }}{% else %}300000{% endif %};
+    const SLIDE_META = JSON.parse(document.getElementById('kiosk-slide-data').textContent || '[]');
+    const SLIDE_URL_BY_ID = Object.fromEntries(
+      SLIDE_META.map((s) => [String(s.id), String(s.url || '')])
+    );
     const slides = Array.from(document.querySelectorAll('.rotator-slide'));
     const timerBar = document.getElementById('slide-timer-bar');
     let currentSlideIndex = 0;
@@ -155,6 +160,13 @@
       } else {
         window.focus();
       }
+    }
+
+    function slideId(slide) {
+      const fromAttr = slide.getAttribute('data-slide-id');
+      if (fromAttr) return fromAttr;
+      const elId = slide.id || '';
+      return elId.startsWith('slide-') ? elId.slice(6) : elId;
     }
 
     function slideReloadIntervalMs(slide) {
@@ -177,12 +189,9 @@
       return { beforeHash: raw.slice(0, i), hash: raw.slice(i) };
     }
 
-    function canonicalSlideUrl(slide, iframe) {
-      return (
-        (iframe && iframe.getAttribute('data-base')) ||
-        (slide && slide.getAttribute('data-url')) ||
-        ''
-      );
+    function canonicalSlideUrl(slide) {
+      const id = slideId(slide);
+      return SLIDE_URL_BY_ID[id] || '';
     }
 
     function withRefreshParam(url) {
@@ -194,27 +203,31 @@
       return `${clean}${joiner}refresh=${Date.now()}${hash}`;
     }
 
+    function assignIframeUrl(iframe, url) {
+      if (!iframe || !url) return;
+      // setAttribute bevarar #hash mer pålitligt än iframe.src = ...
+      iframe.setAttribute('src', url);
+      iframe.dataset.assignedUrl = url;
+      iframe.dataset.loadedFromBase = '1';
+      markLoaded(iframe);
+    }
+
     function ensureSrc(slide) {
       const iframe = slide.querySelector('iframe');
       if (!iframe) return null;
-      const base = canonicalSlideUrl(slide, iframe);
+      const base = canonicalSlideUrl(slide);
       if (!base) return iframe;
-      // Lita på data-base (iframe.src tappar hash vid avläsning).
-      if (iframe.dataset.loadedFromBase !== '1') {
-        iframe.src = base;
-        iframe.dataset.loadedFromBase = '1';
-        markLoaded(iframe);
+      if (iframe.dataset.loadedFromBase !== '1' || iframe.dataset.assignedUrl !== base) {
+        assignIframeUrl(iframe, base);
       }
       return iframe;
     }
 
     function refreshIframe(iframe, slide) {
       if (!iframe) return;
-      const base = canonicalSlideUrl(slide, iframe) || iframe.getAttribute('data-base');
+      const base = canonicalSlideUrl(slide);
       if (!base) return;
-      iframe.src = withRefreshParam(base);
-      iframe.dataset.loadedFromBase = '1';
-      markLoaded(iframe);
+      assignIframeUrl(iframe, withRefreshParam(base));
     }
 
     function maybeRefresh(slide, iframe) {
@@ -224,7 +237,7 @@
         return;
       }
       const intervalMs = slideReloadIntervalMs(slide);
-      if (!intervalMs) return; // 0 = behåll tills kiosken laddas om
+      if (!intervalMs) return;
       const last = parseInt(iframe.dataset.lastLoadedAt || '0', 10);
       if (!last || (Date.now() - last) >= intervalMs) {
         refreshIframe(iframe, slide);
@@ -293,7 +306,6 @@
       }
     }
 
-    // Blockera Space/piltangenter från att "läcka" till innehåll — byten styrs bara av timer.
     window.addEventListener('keydown', (e) => {
       if (e.key === ' ' || e.code === 'Space' || e.key.startsWith('Arrow')) {
         e.preventDefault();
@@ -304,8 +316,11 @@
     document.addEventListener('DOMContentLoaded', () => {
       try {
         keepCheckinFocus();
-        console.log('Karusell: ' + slides.length + ' sidor, reloadOnShow=' + RELOAD_ON_SHOW +
-          ', defaultRefreshMs=' + RELOAD_INTERVAL_MS);
+        console.log(
+          'Karusell: ' + slides.length + ' sidor, reloadOnShow=' + RELOAD_ON_SHOW +
+          ', defaultRefreshMs=' + RELOAD_INTERVAL_MS,
+          SLIDE_URL_BY_ID
+        );
         if (slides.length > 0) {
           ensureSrc(slides[0]);
           prefetchNeighbors(0);

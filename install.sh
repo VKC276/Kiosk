@@ -186,6 +186,7 @@ setup_permissions() {
   chmod +x "${KIOSK_DIR}/install.sh" \
            "${KIOSK_DIR}/deploy/start-browser.sh" \
            "${KIOSK_DIR}/scripts/"*.sh \
+           "${KIOSK_DIR}/scripts/fix-wifi-system.sh" \
            "${KIOSK_DIR}/scripts/"*.py 2>/dev/null || true
 }
 

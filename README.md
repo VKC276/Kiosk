@@ -2,88 +2,108 @@
 
 Lokal kiosk + MIFARE-incheckning för Västerviks klättercenter (Raspberry Pi).
 
-## Installation
+- **Övre ytan:** timer-styrd karusell (iframes / WallFlow / RSS)
+- **Nedre ytan:** kortincheckning (medlem + 10-kort) via USB-läsare
+- **Backend:** Flask/Gunicorn, lokal cache mot Google Apps Script
+- **Drift-CLI:** `vkc-kiosk`
 
-Se **[INSTALLATION.md](INSTALLATION.md)** för steg-för-steg.
+Full guide: **[INSTALLATION.md](INSTALLATION.md)**
 
-Kortversion:
+---
+
+## Snabbstart
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/VKC276/Kiosk/main/install.sh | sudo bash
-vkc-kiosk configure-reader    # välj läsare + kortformat → skriver config.json
-vkc-kiosk restart
 ```
 
-### YAROGNTEC / SDZNKJLTD USB-läsare (`ffff:0035`)
-
-Den läsaren kräver extra systemändringar (annars kan Pi USB dö). Kör **separat**:
+**YAROGNTEC / SDZNKJLTD** (`ffff:0035`) — krävs separat (annars kan Pi USB dö):
 
 ```bash
 sudo vkc-kiosk setup-reader
-# eller: sudo ./scripts/setup-yarogntec-reader.sh
 sudo reboot
 vkc-kiosk configure-reader
+vkc-kiosk save-config
 vkc-kiosk restart
 ```
 
-Övriga keyboard-wedge-läsare: bara `configure-reader` — ingen setup-reader.
+Övriga keyboard-wedge-läsare: bara `configure-reader` (ingen `setup-reader`).
 
-## Vad systemet gör
-
-- **`/`** – hel kiosk: timer-styrda slides + incheckning
-- **`/checkin`** – bara incheckningsytan
-- **`/stream`** – SSE vid kortblipp
-- **`/healthz`** – hälsokoll
-- **`/api/input-devices`** – lista tangentbord/input-enheter
-- **`/api/cache/refresh`** – tvinga omhämtning av medlemscache
-- **`/api/cache/lookup/<id>`** – felsök om kort finns i cache
-
-Kortläsaren körs via `evdev` eller PyUSB (`READER.backend`). Medlems- och 10-kort cacheas från Google Apps Script. Chromium körs i fullskärm så **Pi Connect** fungerar.
-
-## Config
-
-Allt styrs i **lokal** `config.json` (trackas inte i git — mall: `config.example.json`).  
-Använd `vkc-kiosk configure-reader` i stället för manuell kortformatsredigering när det går. Detaljer i [INSTALLATION.md](INSTALLATION.md).
+---
 
 ## Verktyg (`vkc-kiosk`)
 
-Efter installation: `vkc-kiosk help` (eller `vkc-kiosk` utan argument).
+```bash
+vkc-kiosk help
+```
 
 | Kommando | Beskrivning |
 |----------|-------------|
-| `status` | systemd-status för API/browser + `/healthz` |
-| `start` / `stop` / `restart` | Styra tjänsterna |
-| `logs` | Följ journal-loggar (`vkc-kiosk` + browser) |
-| `devices` | Lista input-/USB-läsare |
-| `pull` | `git pull` med config-backup i `~/.config/vkc-kiosk/` |
-| `update` | `pull` + pip + ominstallation/restart |
-| `config` | Öppna `config.json` i `$EDITOR` |
-| `save-config` | Spegla nuvarande config → `~/.config/vkc-kiosk/` |
-| `restore-config` | Återställ `config.json` från `~/.config/vkc-kiosk/` |
-| `url` | Skriv ut lokal kiosk-URL |
-| `setup-reader` | **YAROGNTEC/SDZNKJLTD** systemfix (sudo + reboot) |
-| `configure-reader` | Välj läsare + kortformat → skriver `config.json` |
-| `slides` | Karusell: lägg till/ta bort URL, ordning, tid, refresh (`karusell` = alias) |
+| `status` / `start` / `stop` / `restart` / `logs` | Tjänster + healthz / journal |
+| `devices` | Lista kortläsare |
+| `pull` | `git pull` med skydd av `config.json` |
+| `update` | `pull` + pip + ominstallation |
+| `config` | Öppna `config.json` |
+| `save-config` | Spegla config → `~/.config/vkc-kiosk/` (**kör efter manuell edit**) |
+| `restore-config` | Återställ från `~/.config/vkc-kiosk/` |
+| `url` | Lokal kiosk-URL |
+| `setup-reader` | YAROGNTEC systemfix (sudo + reboot) |
+| `configure-reader` | Läsare + kortformat → `config.json` |
+| `slides` | Karusell (alias: `karusell`) |
 
-Exempel:
+WiFi: skrivbordets nätverks-GUI + login-nyckelring (Seahorse) — **inte** `vkc-kiosk`.
 
-```bash
-vkc-kiosk status
-vkc-kiosk slides
-vkc-kiosk pull
-sudo vkc-kiosk setup-reader          # endast YAROGNTEC
-vkc-kiosk configure-reader
-```
+---
 
-WiFi hanteras via skrivbordets nätverks-GUI / nyckelring — inte av `vkc-kiosk`.
+## HTTP-API
 
-Full steglista och felsökning: [INSTALLATION.md](INSTALLATION.md).
+| URL | Syfte |
+|-----|--------|
+| `/` | Hel kiosk (slides + incheckning) |
+| `/checkin` | Bara incheckning |
+| `/stream` | SSE vid kortblipp |
+| `/healthz` | Hälsokoll + cache |
+| `/api/cache/refresh` | Tvinga omhämtning från GAS |
+| `/api/cache/lookup/<id>` | Finns kortet i cachen? |
+| `/api/input-devices` | Lista evdev-enheter |
+
+---
+
+## Config
+
+- **Lokal** `config.json` — trackas **inte** i git
+- Mall: [`config.example.json`](config.example.json)
+- Efter ändring: `vkc-kiosk save-config`
+- Uppdatera kod: alltid `vkc-kiosk pull` (inte rå `git pull`)
+
+Detaljer om `READER`, `CARD_PROCESSING`, `KIOSK.slides`, cache, timeouts, 10-kort och WiFi: [INSTALLATION.md](INSTALLATION.md).
+
+---
+
+## Repostruktur
+
+| Sökväg | Roll |
+|--------|------|
+| `app.py` / `wsgi.py` | Flask-app + Gunicorn-entry |
+| `card_convert.py` | Kort-ID-konvertering (HEX/DEC, byte/nibble-order) |
+| `reader_usb.py` | PyUSB-backend (YAROGNTEC iface 0) |
+| `config.example.json` | Mall för lokal `config.json` |
+| `templates/` | `kiosk.html` (karusell) + `checkin.html` |
+| `scripts/vkc-kiosk.sh` | CLI (`vkc-kiosk`) |
+| `scripts/setup-yarogntec-reader.sh` | Systemfix USB-läsare |
+| `scripts/configure-card-reader.py` | Interaktiv läsar-/formatassistent |
+| `scripts/manage-slides.py` | Karusell-hjälpare |
+| `deploy/` | systemd, udev, browser-start, USB-quirk |
+| `install.sh` / `uninstall.sh` | Installation |
+
+---
 
 ## Utveckling lokalt
 
 ```bash
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
+cp config.example.json config.json   # fyll i URL:er
 ./venv/bin/python wsgi.py
 ```
 
@@ -91,4 +111,5 @@ python3 -m venv venv
 
 ```bash
 sudo ./uninstall.sh
+# sudo REMOVE_DIR=1 ./uninstall.sh
 ```

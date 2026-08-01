@@ -138,8 +138,8 @@
   <script>
     // reloadOnShow=true: gamla beteendet (ladda om vid varje byte).
     // Annars behålls iframe-innehåll; omhämtning bara om reloadIntervalSeconds gått.
-    const RELOAD_ON_SHOW = {{ 'true' if reload_on_show|default(false) else 'false' }};
-    const RELOAD_INTERVAL_MS = {{ reload_interval_ms|default(300000) }};
+    const RELOAD_ON_SHOW = {% if reload_on_show|default(false) %}true{% else %}false{% endif %};
+    const RELOAD_INTERVAL_MS = {% if reload_interval_ms is defined and reload_interval_ms is not none %}{{ reload_interval_ms|int }}{% else %}300000{% endif %};
     const slides = Array.from(document.querySelectorAll('.rotator-slide'));
     const timerBar = document.getElementById('slide-timer-bar');
     let currentSlideIndex = 0;

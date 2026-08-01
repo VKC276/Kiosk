@@ -265,7 +265,7 @@ Visa inbyggd hjälp: `vkc-kiosk` / `vkc-kiosk help`.
 | `setup-reader` | **ja** | YAROGNTEC/SDZNKJLTD (`ffff:0035`): cmdline, udev, quirk — **reboot efteråt** |
 | `configure-reader` | nej* | Interaktiv läsare + kortformat → `config.json` (*stoppar tjänsten tillfälligt) |
 | `slides` | nej | Hantera karusell (`KIOSK.slides`): URL, ordning, `durationSeconds`, `reloadIntervalSeconds`. Alias: `karusell` |
-| `fix-wifi` | **ja** | Spara WiFi utan nyckelring (netplan `99-vkc-kiosk-wifi.yaml` eller NM system-connection). Alias: `wifi` |
+| `fix-wifi` | **ja** | Permanent NM-profil `vkc-kiosk-wifi` (PSK i system-connection, ingen nyckelring). Alias: `wifi` |
 
 `config.json` ligger **inte** i git. Mall vid ny install: `config.example.json`.
 
@@ -381,8 +381,18 @@ sudo vkc-kiosk fix-wifi
 sudo vkc-kiosk fix-wifi 'MittWifi' 'losenord!'
 ```
 
-På Ubuntu/Pi med **netplan** sparas profilen i `/etc/netplan/99-vkc-kiosk-wifi.yaml` (inte nyckelringen).  
-På ren NetworkManager: `/etc/NetworkManager/system-connections/`.
+Skriver permanent profil **`vkc-kiosk-wifi`** till  
+`/etc/NetworkManager/system-connections/vkc-kiosk-wifi.nmconnection`  
+(med PSK i filen, `autoconnect-priority=999`). Tar bort den gamla netplan-filen  
+`/etc/netplan/99-vkc-kiosk-wifi.yaml` om den finns (den var opålitlig efter reboot).
+
+Kontroll efteråt:
+
+```bash
+nmcli -t -f DEVICE,STATE,CONNECTION device status
+ping -c2 1.1.1.1
+sudo nmcli -s -g 802-11-wireless-security.psk connection show vkc-kiosk-wifi | wc -c
+```
 
 Undvik att spara nätet via skrivbordsdialogen efteråt.
 

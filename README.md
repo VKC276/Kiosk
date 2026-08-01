@@ -62,7 +62,7 @@ Efter installation: `vkc-kiosk help` (eller `vkc-kiosk` utan argument).
 | `setup-reader` | **YAROGNTEC/SDZNKJLTD** systemfix (sudo + reboot) |
 | `configure-reader` | Välj läsare + kortformat → skriver `config.json` |
 | `slides` | Karusell: lägg till/ta bort URL, ordning, tid, refresh (`karusell` = alias) |
-| `fix-wifi` | Spara WiFi i netplan/NM utan nyckelrings-dialog (`wifi` = alias) |
+| `fix-wifi` | Permanent WiFi-profil `vkc-kiosk-wifi` (ingen nyckelring; `wifi` = alias) |
 
 Exempel:
 

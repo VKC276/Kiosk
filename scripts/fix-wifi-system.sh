@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Spara WiFi så det överlever reboot utan nyckelrings-dialog.
+# Spara WiFi permanent i NetworkManager (överlever reboot, ingen nyckelring).
 #
-# Stödjer:
-#   - NetworkManager system-connections
-#   - netplan→NM (vanligt på Ubuntu/Pi: profiler under /run/NetworkManager/...)
+# På netplan+NM-hybrider (Ubuntu/Pi) tar vi bort vår tidigare netplan-wifi-fil
+# som skapade /run/...-profiler utan pålitlig PSK efter reboot, och skriver
+# i stället en root-ägd keyfile under /etc/NetworkManager/system-connections/.
 #
-# Användning (använd enkla citattecken om lösenordet innehåller !):
-#   sudo vkc-kiosk fix-wifi
+# Användning (enkla citattecken om lösenordet innehåller !):
 #   sudo vkc-kiosk fix-wifi 'Mobile-bridge_24' 'pjoskVector4G!'
 #
 set -euo pipefail
@@ -23,15 +22,18 @@ if [[ "${EUID}" -ne 0 ]]; then
   die "Kör med sudo: sudo vkc-kiosk fix-wifi 'SSID' 'losenord'"
 fi
 
-command -v nmcli >/dev/null 2>&1 || die "nmcli saknas. Är NetworkManager installerat?"
+command -v nmcli >/dev/null 2>&1 || die "nmcli saknas."
+command -v python3 >/dev/null 2>&1 || die "python3 saknas."
 systemctl is-active --quiet NetworkManager || die "NetworkManager körs inte."
 
 WIFI_IFACE="$(nmcli -c no -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
 WIFI_IFACE="${WIFI_IFACE:-wlan0}"
+CONN_ID="vkc-kiosk-wifi"
+KEYFILE="/etc/NetworkManager/system-connections/${CONN_ID}.nmconnection"
+NETPLAN_VKC="/etc/netplan/99-vkc-kiosk-wifi.yaml"
 
 log "Nuvarande anslutningar"
-nmcli -c no -f NAME,UUID,TYPE,DEVICE,FILENAME connection show 2>/dev/null | cat || \
-  nmcli -f NAME,UUID,TYPE,DEVICE connection show | cat || true
+nmcli -c no -f NAME,UUID,TYPE,DEVICE,FILENAME connection show 2>/dev/null | cat || true
 echo
 nmcli -c no -t -f DEVICE,TYPE,STATE,CONNECTION device status 2>/dev/null | cat || true
 echo
@@ -75,138 +77,133 @@ if [[ -z "${PSK}" ]]; then
 fi
 [[ -n "${PSK}" ]] || die "Lösenord krävs."
 
-# bash history-expansion kan äta ! i dubbla citattecken hos anroparen
-if [[ "${PSK}" == *'!'* ]]; then
-  echo "Tips: lösenord med ! bör anges i enkla citattecken: 'losen!'"
+if [[ "${#PSK}" -lt 8 ]]; then
+  warn "WPA-lösenord är normalt minst 8 tecken — fortsätter ändå."
 fi
 
-NETPLAN_MODE=0
-if compgen -G "/etc/netplan/*.yaml" >/dev/null 2>&1 || compgen -G "/etc/netplan/*.yml" >/dev/null 2>&1; then
-  NETPLAN_MODE=1
+# --- Städa konflikter -------------------------------------------------------
+
+log "Städar konflikterande WiFi-profiler"
+# Tidigare netplan-wifi från vkc (skapade opålitliga /run-profiler)
+if [[ -f "${NETPLAN_VKC}" ]]; then
+  warn "Tar bort ${NETPLAN_VKC} (byts mot permanent NM-keyfile)"
+  rm -f "${NETPLAN_VKC}"
 fi
-if nmcli -c no -t -f NAME,FILENAME connection show 2>/dev/null | grep -q '/run/NetworkManager/system-connections/netplan-'; then
-  NETPLAN_MODE=1
-fi
 
-yaml_escape() {
-  # Enkel YAML double-quoted escape
-  python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
-}
-
-write_netplan_wifi() {
-  local ssid_json psk_json dest
-  ssid_json="$(yaml_escape "${SSID}")"
-  psk_json="$(yaml_escape "${PSK}")"
-  dest="/etc/netplan/99-vkc-kiosk-wifi.yaml"
-
-  log "Skriver netplan: ${dest}"
-  cat > "${dest}" <<EOF
-# Hanteras av vkc-kiosk fix-wifi — skriv inte lösenord i nyckelringen.
-network:
-  version: 2
-  wifis:
-    ${WIFI_IFACE}:
-      dhcp4: true
-      optional: true
-      access-points:
-        ${ssid_json}:
-          password: ${psk_json}
-EOF
-  chmod 600 "${dest}"
-
-  # Ta bort trasiga NM-dubbletter vi kan ha skapat tidigare
-  local name uuid
-  while IFS=: read -r name uuid _; do
-    [[ "${name}" == "${SSID}" ]] || continue
-    warn "Tar bort NM-dubblett '${name}' (${uuid})"
+# Radera NM-wifi med samma SSID, skräpnamnet "1", och tidigare vkc-profil
+while IFS=: read -r name uuid type; do
+  [[ "${type}" == "802-11-wireless" ]] || continue
+  delete=0
+  [[ "${name}" == "${CONN_ID}" || "${name}" == "${SSID}" || "${name}" == "1" ]] && delete=1
+  # netplan-genererade för samma SSID
+  case "${name}" in
+    netplan-*"${SSID}"*|netplan-"${WIFI_IFACE}"-"${SSID}") delete=1 ;;
+  esac
+  if [[ "${delete}" -eq 1 ]]; then
+    warn "Tar bort anslutning '${name}' (${uuid})"
     nmcli connection delete uuid "${uuid}" >/dev/null 2>&1 || true
-  done < <(nmcli -c no -t -f NAME,UUID,TYPE connection show 2>/dev/null || true)
-
-  log "netplan apply"
-  if command -v netplan >/dev/null 2>&1; then
-    netplan apply || die "netplan apply misslyckades"
-  else
-    die "netplan saknas men systemet ser netplan-hanterat ut"
   fi
-}
+done < <(nmcli -c no -t -f NAME,UUID,TYPE connection show 2>/dev/null || true)
 
-write_nm_system_wifi() {
-  local existing_uuid filename target
-  existing_uuid="$(nmcli -c no -t -f NAME,UUID,TYPE connection show 2>/dev/null \
-    | awk -F: -v n="${SSID}" '$1==n && $3=="802-11-wireless"{print $2; exit}' || true)"
-
-  # Viktigt: wifi-sec.* måste komma EFTER '--' annars sparas inte PSK/key-mgmt.
-  if [[ -n "${existing_uuid}" ]]; then
-    filename="$(nmcli -c no -g connection.filename connection show "${existing_uuid}" 2>/dev/null || true)"
-    case "${filename}" in
-      /run/NetworkManager/*|/etc/netplan/*)
-        warn "Befintlig profil är netplan-genererad (${filename}) — byter till netplan-läge."
-        write_netplan_wifi
-        return
-        ;;
-    esac
-    log "Uppdaterar NM-profil ${existing_uuid}"
-    nmcli connection modify "${existing_uuid}" \
-      connection.id "${SSID}" \
-      connection.autoconnect yes \
-      connection.autoconnect-retries 0 \
-      connection.permissions "" \
-      802-11-wireless.ssid "${SSID}" \
-      -- \
-      802-11-wireless-security.key-mgmt wpa-psk \
-      802-11-wireless-security.psk "${PSK}"
-    target="${existing_uuid}"
-  else
-    log "Skapar NM systemprofil"
-    nmcli connection add \
-      type wifi \
-      con-name "${SSID}" \
-      ifname "${WIFI_IFACE}" \
-      ssid "${SSID}" \
-      connection.autoconnect yes \
-      connection.autoconnect-retries 0 \
-      connection.permissions "" \
-      -- \
-      wifi-sec.key-mgmt wpa-psk \
-      wifi-sec.psk "${PSK}"
-    target="${SSID}"
+# Andra netplan-filer som styr wifi? varna (rör dem inte automatiskt)
+if command -v netplan >/dev/null 2>&1; then
+  if grep -R --include='*.yaml' --include='*.yml' -l 'access-points:' /etc/netplan /lib/netplan 2>/dev/null | grep -v "${NETPLAN_VKC}" >/tmp/vkc-netplan-wifi-files 2>/dev/null; then
+    if [[ -s /tmp/vkc-netplan-wifi-files ]]; then
+      warn "Andra netplan-filer definierar fortfarande WiFi (kan konkurrera):"
+      cat /tmp/vkc-netplan-wifi-files >&2 || true
+    fi
   fi
-
-  chmod 600 /etc/NetworkManager/system-connections/*.nmconnection 2>/dev/null || true
-  nmcli connection reload || true
-
-  log "Aktiverar ${target}"
-  nmcli -w 30 connection up "${target}" \
-    || nmcli -w 30 device wifi connect "${SSID}" password "${PSK}" ifname "${WIFI_IFACE}" \
-    || warn "Kunde inte aktivera just nu — reboota och kontrollera."
-
-  filename="$(nmcli -c no -g connection.filename connection show "${target}" 2>/dev/null || true)"
-  echo
-  log "Klart (NetworkManager)"
-  echo "Anslutning: ${target}"
-  echo "Fil:        ${filename:-okänd}"
-}
-
-if [[ "${NETPLAN_MODE}" -eq 1 ]]; then
-  log "Netplan/NM-hybrid upptäckt — sparar WiFi i netplan (rekommenderat)"
-  write_netplan_wifi
-  sleep 2
-  echo
-  log "Klart (netplan)"
-  echo "SSID:  ${SSID}"
-  echo "Iface: ${WIFI_IFACE}"
-  echo "Fil:   /etc/netplan/99-vkc-kiosk-wifi.yaml"
-  echo
-  nmcli -c no -f NAME,DEVICE,FILENAME connection show --active 2>/dev/null | cat || true
-  echo
-  echo "Kontroll: ping -c2 1.1.1.1"
-else
-  write_nm_system_wifi
-  echo
-  nmcli -c no -f NAME,DEVICE,FILENAME connection show --active 2>/dev/null | cat || true
+  rm -f /tmp/vkc-netplan-wifi-files
+  # Applicera borttagning av 99-filen
+  netplan apply 2>/dev/null || true
 fi
+
+# --- Skriv permanent NM-keyfile ---------------------------------------------
+
+log "Skriver permanent NM-keyfile: ${KEYFILE}"
+python3 - <<'PY' "${KEYFILE}" "${CONN_ID}" "${WIFI_IFACE}" "${SSID}" "${PSK}"
+import sys, uuid
+from pathlib import Path
+
+path, conn_id, iface, ssid, psk = sys.argv[1:6]
+uid = str(uuid.uuid4())
+
+def esc(value: str) -> str:
+    # NM keyfile: escape backslash and semicolon/hash at line starts via normal assignment
+    return value.replace("\\", "\\\\").replace("\n", "")
+
+content = f"""[connection]
+id={esc(conn_id)}
+uuid={uid}
+type=wifi
+interface-name={esc(iface)}
+autoconnect=true
+autoconnect-priority=999
+autoconnect-retries=0
+permissions=
+
+[wifi]
+mode=infrastructure
+ssid={esc(ssid)}
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk={esc(psk)}
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+"""
+
+p = Path(path)
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(content, encoding="utf-8")
+p.chmod(0o600)
+print(f"Skrev {p} (uuid={uid})")
+PY
+
+chmod 600 "${KEYFILE}"
+nmcli connection reload
+sleep 1
+
+# Verifiera att PSK faktiskt finns i profilen (root)
+STORED_PSK="$(nmcli -c no -s -g 802-11-wireless-security.psk connection show "${CONN_ID}" 2>/dev/null || true)"
+if [[ -z "${STORED_PSK}" ]]; then
+  die "PSK sparades inte i ${CONN_ID}. Avbryter."
+fi
+if [[ "${STORED_PSK}" != "${PSK}" ]]; then
+  die "Sparad PSK matchar inte angivet lösenord (citattecken/history-expansion?). Prova enkla citattecken."
+fi
+echo "PSK sparad i profilen: ja (${#STORED_PSK} tecken)"
+
+log "Aktiverar ${CONN_ID}"
+# Koppla ner andra wifi-profiler på iface först
+nmcli -w 10 device disconnect "${WIFI_IFACE}" >/dev/null 2>&1 || true
+if ! nmcli -w 45 connection up "${CONN_ID}" ifname "${WIFI_IFACE}"; then
+  warn "connection up misslyckades — provar wifi connect..."
+  nmcli -w 45 device wifi connect "${SSID}" password "${PSK}" ifname "${WIFI_IFACE}" name "${CONN_ID}" \
+    || warn "Kunde inte ansluta just nu. Kontrollera SSID/lösenord / radio."
+fi
+
+FILENAME="$(nmcli -c no -g connection.filename connection show "${CONN_ID}" 2>/dev/null || true)"
+STATE="$(nmcli -c no -t -f DEVICE,STATE,CONNECTION device status 2>/dev/null | awk -F: -v d="${WIFI_IFACE}" '$1==d{print $2" / "$3}')"
 
 echo
-echo "Använd alltid enkla citattecken om lösenordet innehåller ! :"
-echo "  sudo vkc-kiosk fix-wifi '${SSID}' 'dittlösen!'"
-echo "Spara inte nätet via skrivbordsdialogen efteråt."
+log "Klart"
+echo "Anslutning: ${CONN_ID}"
+echo "SSID:       ${SSID}"
+echo "Iface:      ${WIFI_IFACE}"
+echo "Fil:        ${FILENAME:-${KEYFILE}}"
+echo "Status:     ${STATE:-okänd}"
+echo
+nmcli -c no -f NAME,DEVICE,FILENAME connection show --active 2>/dev/null | cat || true
+echo
+echo "Test: ping -c2 1.1.1.1"
+echo "Efter reboot ska '${CONN_ID}' autoconnecta utan lösenordsruta."
+echo "Spara inte nätet via skrivbordsdialogen (då kommer nyckelringsfelet tillbaka)."
+echo
+echo "Om det fortfarande frågar lösen efter reboot:"
+echo "  nmcli -f NAME,FILENAME connection show"
+echo "  sudo cat ${KEYFILE} | grep -E '^(id|ssid|psk|autoconnect)'"

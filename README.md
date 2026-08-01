@@ -53,6 +53,7 @@ vkc-kiosk update
 vkc-kiosk logs
 vkc-kiosk setup-reader        # endast YAROGNTEC
 vkc-kiosk configure-reader    # läsare + CARD_PROCESSING
+vkc-kiosk slides              # karusell: URL, ordning, visningstid
 ```
 
 ## Utveckling lokalt

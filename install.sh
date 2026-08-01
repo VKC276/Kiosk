@@ -144,6 +144,20 @@ bootstrap_repo() {
   fi
 }
 
+ensure_config() {
+  # config.json trackas inte i git — kopiera exempel vid första installation.
+  if [[ ! -f "${KIOSK_DIR}/config.json" ]]; then
+    if [[ -f "${KIOSK_DIR}/config.example.json" ]]; then
+      log "Skapar config.json från config.example.json (redigera GAS-URL:er m.m.)"
+      sudo -u "${KIOSK_USER}" cp -a "${KIOSK_DIR}/config.example.json" "${KIOSK_DIR}/config.json"
+    else
+      die "Saknar både config.json och config.example.json i ${KIOSK_DIR}"
+    fi
+  else
+    log "Behåller befintlig config.json"
+  fi
+}
+
 setup_python() {
   log "Skapar venv och installerar Python-paket"
   sudo -u "${KIOSK_USER}" python3 -m venv "${KIOSK_DIR}/venv"
@@ -252,6 +266,7 @@ main() {
 
   install_apt_packages
   bootstrap_repo
+  ensure_config
   setup_python
   setup_permissions
   install_cli

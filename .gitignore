@@ -4,3 +4,9 @@ __pycache__/
 .env
 *.log
 .DS_Store
+
+# Lokal driftconfig — får aldrig skrivas över av git pull
+config.json
+config.json.bak
+config.json.localbak
+config.json.*.bak

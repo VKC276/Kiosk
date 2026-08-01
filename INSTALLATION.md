@@ -253,6 +253,7 @@ Lägg i `~/vkc-kiosk/static/`:
 | `vkc-kiosk setup-reader` | YAROGNTEC systemfix (kräver sudo + reboot) |
 | `vkc-kiosk configure-reader` | Välj läsare + kortformat → `config.json` |
 | `vkc-kiosk slides` | Hantera karusell (URL, ordning, visningstid) |
+| `vkc-kiosk fix-wifi` | Spara WiFi som systemanslutning (utan nyckelring) |
 | `vkc-kiosk update` | `git pull` + pip + ominstallation |
 | `vkc-kiosk logs` | Följ journal-loggar |
 | `vkc-kiosk config` | Öppna `config.json` |
@@ -321,6 +322,16 @@ Kontrollera efter reboot:
 cat /proc/cmdline | tr ' ' '\n' | grep -E 'authorized_default|usbhid.quirks'
 journalctl -t vkc-kiosk -n 20
 ```
+
+**WiFi frågar lösenord / "visa lösenord" visar skräp**
+
+Vanligt med autologin: lösenordet sparades i användarnyckelringen, som inte alltid låses upp. Spara som systemanslutning i stället:
+
+```bash
+sudo vkc-kiosk fix-wifi
+```
+
+Ange SSID + lösenord. Kontrollera att filen ligger under `/etc/NetworkManager/system-connections/`. Undvik att spara nätet via skrivbordsdialogen efteråt.
 
 **Pi Connect**  
 Chromium körs med `--start-fullscreen` (inte hård `--kiosk`). Lämna med F11 eller Alt+Tab.

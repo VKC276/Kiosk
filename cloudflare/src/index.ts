@@ -51,13 +51,7 @@ export default {
 
     try {
       if (url.pathname === "/healthz") {
-        const members = await env.DB.prepare("SELECT COUNT(*) AS n FROM members").first<{ n: number }>();
-        const tencards = await env.DB.prepare("SELECT COUNT(*) AS n FROM tencards").first<{ n: number }>();
-        return json({
-          ok: true,
-          members: Number(members?.n) || 0,
-          tencards: Number(tencards?.n) || 0,
-        });
+        return json({ ok: true });
       }
 
       if (url.pathname === "/api/kiosk/config" && request.method === "GET") {
@@ -139,22 +133,19 @@ export default {
         if (denied) return denied;
         const cardId = decodeURIComponent(url.pathname.slice("/api/admin/lookup/".length));
         const store = d1CardStore(env.DB);
-        const tencard = await store.getTencard(cardId);
-        const member = tencard ? null : await store.getMember(cardId);
-        return json({ ok: true, card_id: cardId, tencard, member });
+        const card = await store.getCard(cardId);
+        return json({ ok: true, card_id: cardId, card });
       }
 
       if (url.pathname === "/api/admin/stats" && request.method === "GET") {
         const denied = requireToken(request, env.ADMIN_TOKEN, "ADMIN_TOKEN");
         if (denied) return denied;
-        const members = await env.DB.prepare("SELECT COUNT(*) AS n FROM members").first<{ n: number }>();
-        const tencards = await env.DB.prepare("SELECT COUNT(*) AS n FROM tencards").first<{ n: number }>();
-        const logs = await env.DB.prepare("SELECT COUNT(*) AS n FROM checkin_logs").first<{ n: number }>();
+        const rows = await env.DB.prepare("SELECT key, value FROM meta").all<{ key: string; value: number }>();
+        const counts = Object.fromEntries((rows.results || []).map((r) => [r.key, Number(r.value) || 0]));
         return json({
           ok: true,
-          members: Number(members?.n) || 0,
-          tencards: Number(tencards?.n) || 0,
-          logs: Number(logs?.n) || 0,
+          members: counts.members || 0,
+          tencards: counts.tencards || 0,
         });
       }
 

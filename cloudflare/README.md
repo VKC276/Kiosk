@@ -60,16 +60,28 @@ curl -sS -X POST http://127.0.0.1:8787/api/checkin \
 
 | Metod | Sökväg | Auth | Syfte |
 |-------|--------|------|--------|
-| GET | `/healthz` | nej | antal medlemmar/10-kort |
-| GET | `/api/kiosk/config?kiosk=` | nej | slides + timeouts |
+| GET | `/healthz` | nej | `{ ok: true }` (ingen D1-fråga) |
+| GET | `/api/kiosk/config?kiosk=` | nej | slides + timeouts (1 rad) |
 | GET | `/api/kiosk/ws?kiosk=` | nej | WebSocket till skärmen |
-| POST | `/api/checkin/reading` | KIOSK | blå "Läser kort…" |
-| POST | `/api/checkin` | KIOSK | uppslag + 10-kortsklipp + logg |
+| POST | `/api/checkin/reading` | KIOSK | blå "Läser kort…" (ingen D1) |
+| POST | `/api/checkin` | KIOSK | 1 rad läst; 10-kort skriver 1 rad |
 | POST | `/api/admin/import/members` | ADMIN | GAS-format JSON-lista |
 | POST | `/api/admin/import/tencards` | ADMIN | GAS-format JSON-lista |
 | PUT | `/api/admin/kiosk/config` | ADMIN | karusell |
-| GET | `/api/admin/lookup/<id>` | ADMIN | felsök kort |
-| GET | `/api/admin/stats` | ADMIN | räkningar |
+| GET | `/api/admin/lookup/<id>` | ADMIN | felsök kort (1 rad) |
+| GET | `/api/admin/stats` | ADMIN | räknare i `meta` (2 rader) |
 
-Incheckning är ett D1-uppslag (millisekunder) i stället för Google Apps Script.
-10-kort minskas atomärt med `UPDATE … WHERE remaining > 0 RETURNING`.
+## D1-rader (~50 kort)
+
+D1 tar betalt per **läst/skriven rad**, inte per kort i klubben. 50 kort i en tabell med primärnyckel är en rad per blipp.
+
+| Händelse | Läs | Skriv |
+|----------|-----|--------|
+| Medlemsblipp | 1 (`cards` via `card_id`) | 0 |
+| 10-kortsklipp | 1 | 1 (`remaining - 1`) |
+| Okänt kort | 1 (miss) | 0 |
+| `GET /healthz` (Pi pollar vid boot) | 0 | 0 |
+| Kiosk-sidan laddas | 1 (`kiosk_config`) | 0 |
+| Import om listan är oförändrad | ~0 extra writes (`WHERE` hoppar över lika rader) | |
+
+Incheckningar loggas med `console.log` (Workers-loggar), inte som extra D1-rader. Återimportera GAS bara när listan faktiskt ändrats.

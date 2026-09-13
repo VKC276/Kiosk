@@ -58,19 +58,26 @@ export async function upsertMembers(db: D1Database, rows: GasMember[]): Promise<
     stmts.push(
       db
         .prepare(
-          `INSERT INTO members (card_id, name, status, expires_at, updated_at)
-           VALUES (?, ?, ?, ?, datetime('now'))
+          `INSERT INTO cards (card_id, kind, name, status, expires_at, remaining, updated_at)
+           VALUES (?, 'member', ?, ?, ?, NULL, datetime('now'))
            ON CONFLICT(card_id) DO UPDATE SET
              name = excluded.name,
              status = excluded.status,
              expires_at = excluded.expires_at,
-             updated_at = datetime('now')`,
+             updated_at = datetime('now')
+           WHERE cards.kind = 'member'
+             AND (
+               cards.name IS NOT excluded.name
+               OR cards.status IS NOT excluded.status
+               OR cards.expires_at IS NOT excluded.expires_at
+             )`,
         )
         .bind(mapped.card_id, mapped.name, mapped.status, mapped.expires_at),
     );
     upserted += 1;
   }
   await runChunks(db, stmts);
+  await setMeta(db, "members", upserted);
   return { upserted, skipped };
 }
 
@@ -87,19 +94,37 @@ export async function upsertTencards(db: D1Database, rows: GasTencard[]): Promis
     stmts.push(
       db
         .prepare(
-          `INSERT INTO tencards (card_id, name, remaining, updated_at)
-           VALUES (?, ?, ?, datetime('now'))
+          `INSERT INTO cards (card_id, kind, name, status, expires_at, remaining, updated_at)
+           VALUES (?, 'tencard', ?, '', NULL, ?, datetime('now'))
            ON CONFLICT(card_id) DO UPDATE SET
+             kind = 'tencard',
              name = excluded.name,
              remaining = excluded.remaining,
-             updated_at = datetime('now')`,
+             status = '',
+             expires_at = NULL,
+             updated_at = datetime('now')
+           WHERE cards.kind IS NOT 'tencard'
+             OR cards.name IS NOT excluded.name
+             OR cards.remaining IS NOT excluded.remaining`,
         )
         .bind(mapped.card_id, mapped.name, mapped.remaining),
     );
     upserted += 1;
   }
   await runChunks(db, stmts);
+  await setMeta(db, "tencards", upserted);
   return { upserted, skipped };
+}
+
+async function setMeta(db: D1Database, key: string, value: number): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO meta (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value
+       WHERE meta.value IS NOT excluded.value`,
+    )
+    .bind(key, value)
+    .run();
 }
 
 async function runChunks(db: D1Database, stmts: D1PreparedStatement[]): Promise<void> {

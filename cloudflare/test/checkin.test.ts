@@ -8,23 +8,40 @@ import {
   performCheckin,
   tencardStatus,
 } from "../src/checkin";
-import type { CardStore, MemberRow, TencardRow } from "../src/types";
+import type { CardRow, CardStore, MemberRow, TencardRow } from "../src/types";
 import { memberFromGas, tencardFromGas } from "../src/import";
 
 function memoryStore(opts: {
   members?: MemberRow[];
   tencards?: TencardRow[];
-}): CardStore & { logs: Array<{ cardId: string; kind: string; status: string }> } {
+}): CardStore {
   const members = new Map((opts.members || []).map((m) => [m.card_id, { ...m }]));
   const tencards = new Map((opts.tencards || []).map((t) => [t.card_id, { ...t }]));
-  const logs: Array<{ cardId: string; kind: string; status: string }> = [];
   return {
-    logs,
-    async getTencard(id) {
-      return tencards.get(id) ?? null;
-    },
-    async getMember(id) {
-      return members.get(id) ?? null;
+    async getCard(id): Promise<CardRow | null> {
+      const tencard = tencards.get(id);
+      if (tencard) {
+        return {
+          card_id: tencard.card_id,
+          kind: "tencard",
+          name: tencard.name,
+          status: "",
+          expires_at: null,
+          remaining: tencard.remaining,
+        };
+      }
+      const member = members.get(id);
+      if (member) {
+        return {
+          card_id: member.card_id,
+          kind: "member",
+          name: member.name,
+          status: member.status,
+          expires_at: member.expires_at,
+          remaining: null,
+        };
+      }
+      return null;
     },
     async clipTencard(id) {
       const row = tencards.get(id);
@@ -32,9 +49,6 @@ function memoryStore(opts: {
       if (row.remaining <= 0) return "exhausted";
       row.remaining -= 1;
       return { remaining: row.remaining, name: row.name };
-    },
-    async logCheckin(entry) {
-      logs.push({ cardId: entry.cardId, kind: entry.kind, status: entry.status });
     },
   };
 }
@@ -62,14 +76,13 @@ describe("mapMemberStatus", () => {
 });
 
 describe("performCheckin", () => {
-  it("clips a 10-kort atomically and logs", async () => {
+  it("clips a 10-kort atomically", async () => {
     const store = memoryStore({
       tencards: [{ card_id: "111", name: "Anna", remaining: 3 }],
     });
     const status = await performCheckin(store, "111", "reception");
     expect(status.status).toBe("TENCARD_CLIPPED_OK");
     expect(status.message).toContain("2 klipp kvar");
-    expect(store.logs[0].kind).toBe("TENCARD");
   });
 
   it("uses last-clip status at 1 remaining", async () => {
@@ -91,29 +104,27 @@ describe("performCheckin", () => {
     expect(status.status).toBe("TENCARD_EXHAUSTED");
   });
 
-  it("welcomes active members and logs", async () => {
+  it("welcomes active members without extra writes", async () => {
     const store = memoryStore({
       members: [{ card_id: "222", name: "Bo", status: "Aktivt", expires_at: "2027-01-01" }],
     });
     const status = await performCheckin(store, "222", "reception");
     expect(status.status).toBe("ACTIVE");
-    expect(memberStatus(store.logs.length ? { card_id: "222", name: "Bo", status: "Aktivt", expires_at: null } : { card_id: "222", name: "Bo", status: "Aktivt", expires_at: null }).status).toBe("ACTIVE");
-    expect(store.logs).toHaveLength(1);
+    expect(memberStatus({ card_id: "222", name: "Bo", status: "Aktivt", expires_at: null }).status).toBe("ACTIVE");
   });
 
-  it("does not log expired member visits", async () => {
+  it("returns expired members without clipping", async () => {
     const store = memoryStore({
       members: [{ card_id: "222", name: "Bo", status: "Utgånget", expires_at: null }],
     });
-    await performCheckin(store, "222", "reception");
-    expect(store.logs).toHaveLength(0);
+    const status = await performCheckin(store, "222", "reception");
+    expect(status.status).toBe("EXPIRED");
   });
 
   it("returns not found", async () => {
     const store = memoryStore({});
     const status = await performCheckin(store, "999", "reception");
     expect(status.status).toBe("NOT_FOUND");
-    expect(store.logs[0].kind).toBe("UNKNOWN");
   });
 });
 

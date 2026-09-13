@@ -36,14 +36,16 @@ export type KioskConfig = {
   last_clip_return_seconds: number;
 };
 
+export type CardRow = {
+  card_id: string;
+  kind: "member" | "tencard";
+  name: string;
+  status: string;
+  expires_at: string | null;
+  remaining: number | null;
+};
+
 export type CardStore = {
-  getTencard(cardId: string): Promise<TencardRow | null>;
-  getMember(cardId: string): Promise<MemberRow | null>;
+  getCard(cardId: string): Promise<CardRow | null>;
   clipTencard(cardId: string): Promise<{ remaining: number; name: string } | "exhausted" | "missing">;
-  logCheckin(entry: {
-    cardId: string;
-    kind: string;
-    status: string;
-    kioskId: string;
-  }): Promise<void>;
 };

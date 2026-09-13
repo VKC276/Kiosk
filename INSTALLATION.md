@@ -84,7 +84,9 @@ Görs en gång från en dator med Wrangler (kan vara samma som deploy-maskinen, 
 
 7. `vkc-kiosk save-config && sudo SKIP_APT=1 ./install.sh` (eller `vkc-kiosk update`) så systemd kör `agent.py` och Chromium öppnar Worker-URL:en.
 
-`vkc-kiosk url` visar adressen Chromium använder. `vkc-kiosk status` curl:ar Worker `/healthz`.
+`vkc-kiosk url` visar adressen Chromium använder. `vkc-kiosk status` curl:ar Worker `/healthz` (utan D1-fråga).
+
+Med ~50 kort är D1-kostnaden per blipp **1 rad läst** (medlemskort) eller **1 läst + 1 skriven** (10-kortsklipp). Importera inte om listan är oförändrad. Detaljer: [cloudflare/README.md](cloudflare/README.md).
 
 Befintliga installationer utan `CLOUDFLARE.enabled` fortsätter med lokal Flask oförändrat.
 

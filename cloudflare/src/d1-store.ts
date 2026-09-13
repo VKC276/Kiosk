@@ -1,29 +1,24 @@
-import type { CardStore, MemberRow, TencardRow } from "./types";
+import type { CardRow, CardStore } from "./types";
 
 export function d1CardStore(db: D1Database): CardStore {
   return {
-    async getTencard(cardId: string): Promise<TencardRow | null> {
+    async getCard(cardId: string): Promise<CardRow | null> {
       const row = await db
-        .prepare("SELECT card_id, name, remaining FROM tencards WHERE card_id = ?")
+        .prepare(
+          `SELECT card_id, kind, name, status, expires_at, remaining
+           FROM cards WHERE card_id = ?`,
+        )
         .bind(cardId)
-        .first<TencardRow>();
-      return row ?? null;
-    },
-
-    async getMember(cardId: string): Promise<MemberRow | null> {
-      const row = await db
-        .prepare("SELECT card_id, name, status, expires_at FROM members WHERE card_id = ?")
-        .bind(cardId)
-        .first<MemberRow>();
+        .first<CardRow>();
       return row ?? null;
     },
 
     async clipTencard(cardId: string) {
       const row = await db
         .prepare(
-          `UPDATE tencards
+          `UPDATE cards
            SET remaining = remaining - 1, updated_at = datetime('now')
-           WHERE card_id = ? AND remaining > 0
+           WHERE card_id = ? AND kind = 'tencard' AND remaining > 0
            RETURNING remaining, name`,
         )
         .bind(cardId)
@@ -32,22 +27,7 @@ export function d1CardStore(db: D1Database): CardStore {
       if (row) {
         return { remaining: Number(row.remaining), name: row.name || "" };
       }
-
-      const existing = await db
-        .prepare("SELECT remaining FROM tencards WHERE card_id = ?")
-        .bind(cardId)
-        .first<{ remaining: number }>();
-      if (!existing) return "missing";
       return "exhausted";
-    },
-
-    async logCheckin(entry) {
-      await db
-        .prepare(
-          "INSERT INTO checkin_logs (card_id, kind, status, kiosk_id) VALUES (?, ?, ?, ?)",
-        )
-        .bind(entry.cardId, entry.kind, entry.status, entry.kioskId)
-        .run();
     },
   };
 }

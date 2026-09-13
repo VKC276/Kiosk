@@ -74,6 +74,11 @@ h1 { font-size: 1.38em; color: #444; margin: 8.5px 0; }
 <script>
 const params = new URLSearchParams(location.search);
 const kioskId = params.get("kiosk") || "reception";
+let cfg = {
+  status_display_seconds: Number(params.get("status")) || 3,
+  last_clip_ok_seconds: Number(params.get("lastOk")) || 3,
+  last_clip_return_seconds: Number(params.get("lastReturn")) || 5,
+};
 const wrapper = document.getElementById("status-box-wrapper");
 const mainMessage = document.getElementById("main-message");
 const secondaryMessage = document.getElementById("secondary-message");
@@ -84,11 +89,6 @@ const audioSuccess = new Audio("/static/success.mp3");
 const audioFailure = new Audio("/static/failure.mp3");
 const audioWarning = new Audio("/static/warning.mp3");
 
-let cfg = {
-  status_display_seconds: 3,
-  last_clip_ok_seconds: 3,
-  last_clip_return_seconds: 5,
-};
 let lastPlayedStatus = null;
 let hideTimer = null;
 let phaseTimer = null;
@@ -177,11 +177,7 @@ function connectWs() {
   ws.onerror = () => ws.close();
 }
 
-fetch("/api/kiosk/config?kiosk=" + encodeURIComponent(kioskId))
-  .then((r) => r.json())
-  .then((payload) => { if (payload.config) cfg = Object.assign(cfg, payload.config); })
-  .catch(() => {})
-  .finally(connectWs);
+connectWs();
 </script>
 </body>
 </html>

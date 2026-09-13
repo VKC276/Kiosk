@@ -160,48 +160,40 @@ export async function performCheckin(
     };
   }
 
-  const tencard = await store.getTencard(cardId);
-  if (tencard) {
-    if ((Number(tencard.remaining) || 0) <= 0) {
-      const status = tencardStatus(tencard);
-      await store.logCheckin({
-        cardId,
-        kind: "TENCARD",
-        status: status.status,
-        kioskId,
-      });
+  const card = await store.getCard(cardId);
+  if (!card) {
+    console.log(JSON.stringify({ event: "checkin", kioskId, cardId, status: "NOT_FOUND" }));
+    return notFoundStatus(cardId);
+  }
+
+  if (card.kind === "tencard") {
+    const remaining = Number(card.remaining) || 0;
+    if (remaining <= 0) {
+      const status = tencardStatus({ card_id: card.card_id, name: card.name, remaining: 0 });
+      console.log(JSON.stringify({ event: "checkin", kioskId, cardId, status: status.status }));
       return status;
     }
 
     const clip = await store.clipTencard(cardId);
-    if (clip === "missing") {
-      const status = notFoundStatus(cardId);
-      await store.logCheckin({ cardId, kind: "UNKNOWN", status: status.status, kioskId });
-      return status;
-    }
-    if (clip === "exhausted") {
-      const status = tencardStatus({ ...tencard, remaining: 0 });
+    if (clip === "missing" || clip === "exhausted") {
+      const status = tencardStatus({ card_id: card.card_id, name: card.name, remaining: 0 });
       status.status = "TENCARD_CLIP_FAIL_EXHAUSTED";
       status.message = "Klipp misslyckades: 0 klipp kvar!";
-      await store.logCheckin({ cardId, kind: "TENCARD", status: status.status, kioskId });
+      console.log(JSON.stringify({ event: "checkin", kioskId, cardId, status: status.status }));
       return status;
     }
 
     const status = clipSuccessStatus(cardId, clip.remaining, clip.name);
-    await store.logCheckin({ cardId, kind: "TENCARD", status: status.status, kioskId });
+    console.log(JSON.stringify({ event: "checkin", kioskId, cardId, status: status.status, remaining: clip.remaining }));
     return status;
   }
 
-  const member = await store.getMember(cardId);
-  if (member) {
-    const status = memberStatus(member);
-    if (status.status === "ACTIVE" || status.status === "EXPIRING_SOON") {
-      await store.logCheckin({ cardId, kind: "MEMBER", status: status.status, kioskId });
-    }
-    return status;
-  }
-
-  const missing = notFoundStatus(cardId);
-  await store.logCheckin({ cardId, kind: "UNKNOWN", status: missing.status, kioskId });
-  return missing;
+  const status = memberStatus({
+    card_id: card.card_id,
+    name: card.name,
+    status: card.status,
+    expires_at: card.expires_at,
+  });
+  console.log(JSON.stringify({ event: "checkin", kioskId, cardId, status: status.status }));
+  return status;
 }

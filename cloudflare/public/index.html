@@ -145,7 +145,7 @@
           ${slideHtml}
           <div class="slide-timer" aria-hidden="true"><div class="slide-timer__bar" id="slide-timer-bar"></div></div>
         </div>
-        ${checkinEnabled ? `<div class="card-reader-section"><iframe id="checkin-frame" src="/checkin.html?kiosk=${encodeURIComponent(kioskId)}" title="Incheckning" loading="eager"></iframe></div>` : ""}
+        ${checkinEnabled ? `<div class="card-reader-section"><iframe id="checkin-frame" src="/checkin.html?kiosk=${encodeURIComponent(kioskId)}&status=${encodeURIComponent(cfg.status_display_seconds || 3)}&lastOk=${encodeURIComponent(cfg.last_clip_ok_seconds || 3)}&lastReturn=${encodeURIComponent(cfg.last_clip_return_seconds || 5)}" title="Incheckning" loading="eager"></iframe></div>` : ""}
       `;
 
       const SLIDE_URL_BY_ID = Object.fromEntries(slides.map((s) => [String(s.id), String(s.url || "")]));

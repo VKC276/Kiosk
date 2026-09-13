@@ -6,7 +6,9 @@ Ingen lokal kopia av 10-kortslistan — internet behövs ändå för skärmen.
 Workern pushar samma status till incheckningsytan (iframe mot Workern).
 
 `KIOSK_TOKEN` kan **bara klippa befintliga kort**. Den kan inte skapa kort eller sätta saldo.
-Nya kort och manuell justering kräver `ADMIN_TOKEN` (senare WallFlow för superadmin/hallvärd).
+Nya kort och manuell justering kräver `ADMIN_TOKEN` (WallFlow för superadmin/hallvärd).
+
+**Deploy utan Pi, så WallFlow kan byggas:** se **[WALLFLOW.md](./WALLFLOW.md)**.
 
 ## En gång
 

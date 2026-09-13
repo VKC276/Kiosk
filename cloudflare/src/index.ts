@@ -152,7 +152,18 @@ export default {
           last_clipped_at: body.last_clipped_at != null ? String(body.last_clipped_at) : null,
           name: body.name != null ? String(body.name) : "",
         });
-        return json(request, { ok: true, card_id: cardId });
+        const card = await d1CardStore(env.DB).getCard(cardId);
+        return json(request, { ok: true, card_id: cardId, card });
+      }
+
+      if (url.pathname.startsWith("/api/admin/tencards/") && request.method === "GET") {
+        const cardId = decodeURIComponent(url.pathname.slice("/api/admin/tencards/".length));
+        if (!cardId) return json(request, { ok: false, error: "card_id required" }, 400);
+        const card = await d1CardStore(env.DB).getCard(cardId);
+        if (!card || card.kind !== "tencard") {
+          return json(request, { ok: false, error: "not_found" }, 404);
+        }
+        return json(request, { ok: true, card });
       }
 
       if (url.pathname === "/api/admin/kiosk/config" && request.method === "PUT") {

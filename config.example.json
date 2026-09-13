@@ -1,4 +1,12 @@
 {
+  "CLOUDFLARE": {
+    "enabled": true,
+    "apiUrl": "https://vkc-kiosk.REPLACE_ME.workers.dev",
+    "kioskId": "reception",
+    "token": "REPLACE_ME_KIOSK_TOKEN",
+    "adminToken": "",
+    "timeoutSeconds": 5
+  },
   "READER": {
     "device": "/dev/input/event0",
     "nameContains": "SDZNKJLTD USB Reader",

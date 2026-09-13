@@ -1,0 +1,3 @@
+# Kopiera till .dev.vars för wrangler dev (committas inte).
+KIOSK_TOKEN=dev-kiosk-token
+ADMIN_TOKEN=dev-admin-token

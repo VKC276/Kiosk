@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Västerviks klättercenter Kiosk</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+      box-sizing: border-box;
+    }
+    .main-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+    }
+    .rotator-section {
+      height: var(--content-height, 80%);
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    .rotator-section.full { height: 100%; }
+    .rotator-slide {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.8s ease-in-out;
+      pointer-events: none;
+    }
+    .rotator-slide.active { opacity: 1; }
+    .rotator-slide iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background-color: #f0f0f0;
+    }
+    .slide-timer {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 3px;
+      z-index: 5;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.12);
+    }
+    .slide-timer__bar {
+      height: 100%;
+      width: 100%;
+      transform-origin: left center;
+      transform: scaleX(1);
+      background: rgba(255, 255, 255, 0.55);
+      will-change: transform;
+    }
+    .card-reader-section {
+      height: var(--checkin-height, 20%);
+      width: 100%;
+      box-sizing: border-box;
+      background-color: #ffffff;
+      border-top: 5px solid #ccc;
+      padding: 0;
+    }
+    .card-reader-section iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+    .boot-error {
+      padding: 2rem;
+      font-size: 1.4rem;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="main-container" id="root">
+    <p class="boot-error">Laddar kiosk…</p>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const kioskId = params.get("kiosk") || "reception";
+
+    function splitUrlAndHash(url) {
+      const raw = String(url || "");
+      const i = raw.indexOf("#");
+      if (i === -1) return { beforeHash: raw, hash: "" };
+      return { beforeHash: raw.slice(0, i), hash: raw.slice(i) };
+    }
+
+    function withRefreshParam(url) {
+      const { beforeHash, hash } = splitUrlAndHash(url);
+      let clean = beforeHash.replace(/([?&])refresh=\d+/g, "$1").replace(/[?&]$/, "");
+      const joiner = clean.includes("?") ? "&" : "?";
+      return `${clean}${joiner}refresh=${Date.now()}${hash}`;
+    }
+
+    function normalizeSlides(raw) {
+      return (raw || []).map((slide, index) => {
+        if (!slide || !slide.url) return null;
+        let durationMs = slide.durationMs;
+        if (durationMs == null && slide.durationSeconds != null) {
+          durationMs = Number(slide.durationSeconds) * 1000;
+        }
+        if (durationMs == null) durationMs = 30000;
+        return {
+          id: slide.id || ("slide-" + (index + 1)),
+          title: slide.title || slide.id || ("Slide " + (index + 1)),
+          url: slide.url,
+          durationMs: Math.max(1000, Number(durationMs) || 30000),
+          reloadIntervalSeconds: slide.reloadIntervalSeconds,
+        };
+      }).filter(Boolean);
+    }
+
+    async function boot() {
+      const res = await fetch("/api/kiosk/config?kiosk=" + encodeURIComponent(kioskId));
+      const payload = await res.json();
+      const cfg = payload.config || {};
+      const slides = normalizeSlides(cfg.slides);
+      const checkinEnabled = cfg.checkin_enabled !== false;
+      const checkinHeight = checkinEnabled
+        ? Math.min(80, Math.max(0, Number(cfg.checkin_height_percent) || 20))
+        : 0;
+      const reloadOnShow = Boolean(cfg.reload_on_show);
+      const reloadIntervalMs = Math.max(0, (Number(cfg.reload_interval_seconds) || 300) * 1000);
+      const root = document.getElementById("root");
+      document.documentElement.style.setProperty("--checkin-height", checkinHeight + "%");
+      document.documentElement.style.setProperty("--content-height", (100 - checkinHeight) + "%");
+
+      const slideHtml = slides.map((slide, i) => `
+        <div class="rotator-slide${i === 0 ? " active" : ""}" data-slide-id="${slide.id}" data-duration-ms="${slide.durationMs}" ${slide.reloadIntervalSeconds != null ? `data-reload-interval-sec="${slide.reloadIntervalSeconds}"` : ""} id="slide-${slide.id}">
+          <iframe id="iframe-${slide.id}" title="${slide.title}" tabindex="-1"></iframe>
+        </div>`).join("");
+
+      root.innerHTML = `
+        <div class="rotator-section${checkinEnabled ? "" : " full"}" id="rotator">
+          ${slideHtml}
+          <div class="slide-timer" aria-hidden="true"><div class="slide-timer__bar" id="slide-timer-bar"></div></div>
+        </div>
+        ${checkinEnabled ? `<div class="card-reader-section"><iframe id="checkin-frame" src="/checkin.html?kiosk=${encodeURIComponent(kioskId)}" title="Incheckning" loading="eager"></iframe></div>` : ""}
+      `;
+
+      const SLIDE_URL_BY_ID = Object.fromEntries(slides.map((s) => [String(s.id), String(s.url || "")]));
+      const slideEls = Array.from(document.querySelectorAll(".rotator-slide"));
+      const timerBar = document.getElementById("slide-timer-bar");
+      let currentSlideIndex = 0;
+      let slideTimer = null;
+      let progressRaf = null;
+      let slideStartedAt = 0;
+      let slideDurationMs = 0;
+
+      function keepCheckinFocus() {
+        const checkin = document.getElementById("checkin-frame");
+        if (checkin) {
+          try { checkin.focus({ preventScroll: true }); } catch (_) {}
+        }
+      }
+
+      function slideId(slide) {
+        return slide.getAttribute("data-slide-id") || "";
+      }
+
+      function slideReloadIntervalMs(slide) {
+        const attr = slide.getAttribute("data-reload-interval-sec");
+        if (attr === null || attr === "") return reloadIntervalMs;
+        const raw = parseInt(attr, 10);
+        if (!Number.isFinite(raw)) return reloadIntervalMs;
+        return raw > 0 ? raw * 1000 : 0;
+      }
+
+      function assignIframeUrl(iframe, url) {
+        if (!iframe || !url) return;
+        iframe.setAttribute("src", url);
+        iframe.dataset.assignedUrl = url;
+        iframe.dataset.loadedFromBase = "1";
+        iframe.dataset.lastLoadedAt = String(Date.now());
+      }
+
+      function canonicalSlideUrl(slide) {
+        return SLIDE_URL_BY_ID[slideId(slide)] || "";
+      }
+
+      function ensureSrc(slide) {
+        const iframe = slide.querySelector("iframe");
+        if (!iframe) return null;
+        const base = canonicalSlideUrl(slide);
+        if (!base) return iframe;
+        if (iframe.dataset.loadedFromBase !== "1" || iframe.dataset.assignedUrl !== base) {
+          assignIframeUrl(iframe, base);
+        }
+        return iframe;
+      }
+
+      function refreshIframe(iframe, slide) {
+        const base = canonicalSlideUrl(slide);
+        if (!iframe || !base) return;
+        assignIframeUrl(iframe, withRefreshParam(base));
+      }
+
+      function maybeRefresh(slide, iframe) {
+        if (!iframe) return;
+        if (reloadOnShow) {
+          refreshIframe(iframe, slide);
+          return;
+        }
+        const intervalMs = slideReloadIntervalMs(slide);
+        if (!intervalMs) return;
+        const last = parseInt(iframe.dataset.lastLoadedAt || "0", 10);
+        if (!last || (Date.now() - last) >= intervalMs) refreshIframe(iframe, slide);
+      }
+
+      function prefetchNeighbors(index) {
+        if (slideEls.length < 2) return;
+        ensureSrc(slideEls[(index + 1) % slideEls.length]);
+        if (slideEls.length > 2) ensureSrc(slideEls[(index + 2) % slideEls.length]);
+      }
+
+      function stopProgress() {
+        if (progressRaf) cancelAnimationFrame(progressRaf);
+        progressRaf = null;
+      }
+
+      function tickProgress() {
+        if (!timerBar || slideDurationMs <= 0) return;
+        const elapsed = Date.now() - slideStartedAt;
+        const remaining = Math.max(0, 1 - elapsed / slideDurationMs);
+        timerBar.style.transform = "scaleX(" + remaining + ")";
+        if (remaining > 0) progressRaf = requestAnimationFrame(tickProgress);
+      }
+
+      function startProgress(durationMs) {
+        stopProgress();
+        slideStartedAt = Date.now();
+        slideDurationMs = durationMs;
+        if (!timerBar) return;
+        timerBar.style.transform = "scaleX(1)";
+        progressRaf = requestAnimationFrame(tickProgress);
+      }
+
+      function setSlide(index) {
+        if (!slideEls.length) return;
+        slideEls[currentSlideIndex]?.classList.remove("active");
+        currentSlideIndex = ((index % slideEls.length) + slideEls.length) % slideEls.length;
+        const slide = slideEls[currentSlideIndex];
+        slide.classList.add("active");
+        const iframe = ensureSrc(slide);
+        maybeRefresh(slide, iframe);
+        prefetchNeighbors(currentSlideIndex);
+        const durationMs = parseInt(slide.dataset.durationMs, 10) || 30000;
+        startProgress(durationMs);
+        keepCheckinFocus();
+        clearTimeout(slideTimer);
+        if (slideEls.length > 1) {
+          slideTimer = setTimeout(() => setSlide(currentSlideIndex + 1), durationMs);
+        }
+      }
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === " " || e.code === "Space" || e.key.startsWith("Arrow")) {
+          e.preventDefault();
+          keepCheckinFocus();
+        }
+      }, true);
+
+      keepCheckinFocus();
+      if (slideEls.length > 0) {
+        ensureSrc(slideEls[0]);
+        prefetchNeighbors(0);
+        setSlide(0);
+      }
+      setInterval(keepCheckinFocus, 5000);
+    }
+
+    boot().catch((err) => {
+      document.getElementById("root").innerHTML =
+        '<p class="boot-error">Kunde inte ladda kioskconfig från Cloudflare. ' + String(err) + "</p>";
+    });
+  </script>
+</body>
+</html>

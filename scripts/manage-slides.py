@@ -36,6 +36,51 @@ def save_config(cfg: dict) -> None:
     )
     print(f"\nSparade {CONFIG_PATH}")
     print(f"Backup:  {backup}")
+    push_slides_to_cloudflare(cfg)
+
+
+def push_slides_to_cloudflare(cfg: dict) -> None:
+    cf = cfg.get("CLOUDFLARE") or {}
+    if not cf.get("enabled"):
+        return
+    api = str(cf.get("apiUrl") or "").rstrip("/")
+    token = str(cf.get("adminToken") or "").strip()
+    kiosk_id = str(cf.get("kioskId") or "reception")
+    if not api or not token:
+        print(
+            "Cloudflare: slides sparades lokalt. Sätt CLOUDFLARE.adminToken "
+            "för att publicera karusellen till Workern."
+        )
+        return
+    try:
+        import requests
+    except ImportError:
+        print("Cloudflare: requests saknas, hoppar över publicering.")
+        return
+    kiosk = cfg.get("KIOSK") or {}
+    checkin = kiosk.get("checkin") if isinstance(kiosk.get("checkin"), dict) else {}
+    payload = {
+        "kiosk_id": kiosk_id,
+        "slides": kiosk.get("slides") or [],
+        "checkin_enabled": bool(checkin.get("enabled", True)),
+        "checkin_height_percent": int(checkin.get("heightPercent", 20)),
+        "reload_on_show": bool(kiosk.get("reloadOnShow", False)),
+        "reload_interval_seconds": int(kiosk.get("reloadIntervalSeconds", 300)),
+        "status_display_seconds": int((cfg.get("TIMEOUTS") or {}).get("statusDisplaySeconds", 3)),
+        "last_clip_ok_seconds": int((cfg.get("TIMEOUTS") or {}).get("lastClipOkSeconds", 3)),
+        "last_clip_return_seconds": int((cfg.get("TIMEOUTS") or {}).get("lastClipReturnSeconds", 5)),
+    }
+    url = f"{api}/api/admin/kiosk/config"
+    response = requests.put(
+        url,
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=20,
+    )
+    if response.ok:
+        print(f"Publicerade karusell till Cloudflare ({kiosk_id}).")
+    else:
+        print(f"Cloudflare publicering misslyckades: HTTP {response.status_code} {response.text[:200]}")
 
 
 def prompt(text: str, default: str | None = None) -> str:

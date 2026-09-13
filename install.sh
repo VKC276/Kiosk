@@ -111,7 +111,7 @@ bootstrap_repo() {
     self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   fi
 
-  if [[ -n "${self_dir}" && -f "${self_dir}/wsgi.py" && -f "${self_dir}/app.py" ]]; then
+  if [[ -n "${self_dir}" && -f "${self_dir}/app.py" && ( -f "${self_dir}/agent.py" || -f "${self_dir}/wsgi.py" ) ]]; then
     KIOSK_DIR="${KIOSK_DIR:-${self_dir}}"
     log "Använder befintlig kodkatalog: ${KIOSK_DIR}"
     # Om vi kör från en annan användares kopia, säkerställ ägarskap senare
@@ -168,7 +168,7 @@ ensure_config() {
   fi
 
   if [[ -f "${KIOSK_DIR}/config.example.json" ]]; then
-    log "Skapar config.json från config.example.json (redigera GAS-URL:er m.m.)"
+    log "Skapar config.json från config.example.json (fyll i Cloudflare eller GAS)"
     sudo -u "${KIOSK_USER}" cp -a "${KIOSK_DIR}/config.example.json" "${KIOSK_DIR}/config.json"
   else
     die "Saknar både config.json och config.example.json i ${KIOSK_DIR}"
@@ -262,16 +262,16 @@ VKC Kiosk installerad
 
   Kod:      ${KIOSK_DIR}
   Användare:${KIOSK_USER}
-  API:      http://127.0.0.1:${SERVER_PORT}/
+  Backend:  ${KIOSK_DIR}/scripts/start-kiosk-backend.sh
   Tjänster: vkc-kiosk.service$([ "${SKIP_BROWSER:-0}" = "1" ] || echo " + vkc-kiosk-browser.service")
 
-Nästa steg:
-  1) Lista kortläsare:   vkc-kiosk devices
-  2) Justera config:     nano ${KIOSK_DIR}/config.json
-  3) Starta om:          vkc-kiosk restart
-  4) Status/loggar:      vkc-kiosk status
+Nästa steg (Cloudflare):
+  1) Deploy:a worker enligt cloudflare/README.md
+  2) Importera data: python scripts/import-from-gas.py
+  3) Sätt CLOUDFLARE.enabled/apiUrl/token i config.json
+  4) vkc-kiosk save-config && vkc-kiosk restart
 
-Tips: logga ut/in (eller reboot) så input-gruppens behörighet tar effekt.
+Lokal Flask/GAS (fallback): lämna CLOUDFLARE.enabled=false
 ────────────────────────────────────────────────────────
 EOF
 }

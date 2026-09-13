@@ -11,6 +11,10 @@ Guide för Raspberry Pi (Pi OS, skrivbordsversion). Pi 4/5 rekommenderas.
 
 Valfritt: [Raspberry Pi Connect](https://www.raspberrypi.com/documentation/services/connect.html) — fungerar; skärmen är fullskärm, inte hårdlåst kiosk.
 
+**Rekommenderad drift:** medlems- och 10-kortsdata i Cloudflare D1. Pi:n kör `agent.py` (kortläsare) och Chromium mot Worker-UI. Ingen lokal Flask-server. Check-in tar millisekunder jämfört med Google Apps Script.
+
+GAS + lokal Flask finns kvar som fallback (`CLOUDFLARE.enabled: false`).
+
 ---
 
 ## 1. Installera
@@ -25,7 +29,7 @@ Installern sätter upp:
 - kod under `~/vkc-kiosk` (klon från `main`)
 - Python-venv och beroenden
 - behörighet till kortläsare (`input` / `plugdev`)
-- systemd: `vkc-kiosk` (API) + `vkc-kiosk-browser` (Chromium)
+- systemd: `vkc-kiosk` (agent eller Flask) + `vkc-kiosk-browser` (Chromium)
 - kommandot `vkc-kiosk` → `/usr/local/bin/vkc-kiosk`
 - `config.json` från `config.example.json` om den saknas
 
@@ -47,7 +51,44 @@ sudo SKIP_APT=1 ./install.sh        # vid uppdatering / ominstallation
 
 ---
 
-## 2. Kortläsare
+## 1b. Cloudflare Worker (rekommenderat)
+
+Görs en gång från en dator med Wrangler (kan vara samma som deploy-maskinen, inte nödvändigtvis Pi:n). Steg-för-steg: [cloudflare/README.md](cloudflare/README.md).
+
+1. `npx wrangler d1 create vkc-kiosk` och klistra in `database_id` i `cloudflare/wrangler.jsonc`
+2. `npx wrangler d1 migrations apply vkc-kiosk --remote`
+3. `npx wrangler secret put KIOSK_TOKEN` och `ADMIN_TOKEN`
+4. `npx wrangler deploy`
+5. Importera befintliga listor från GAS:
+
+```bash
+./venv/bin/python scripts/import-from-gas.py \
+  --api-url https://vkc-kiosk.<konto>.workers.dev \
+  --admin-token "$ADMIN_TOKEN"
+```
+
+6. På Pi:n i `config.json`:
+
+```json
+"CLOUDFLARE": {
+  "enabled": true,
+  "apiUrl": "https://vkc-kiosk.<konto>.workers.dev",
+  "kioskId": "reception",
+  "token": "<samma som KIOSK_TOKEN>",
+  "adminToken": "",
+  "timeoutSeconds": 5
+}
+```
+
+`adminToken` behövs bara om Pi:n ska publicera karusellen (`vkc-kiosk slides`). Annars räcker kiosk-token.
+
+7. `vkc-kiosk save-config && sudo SKIP_APT=1 ./install.sh` (eller `vkc-kiosk update`) så systemd kör `agent.py` och Chromium öppnar Worker-URL:en.
+
+`vkc-kiosk url` visar adressen Chromium använder. `vkc-kiosk status` curl:ar Worker `/healthz`.
+
+Befintliga installationer utan `CLOUDFLARE.enabled` fortsätter med lokal Flask oförändrat.
+
+---
 
 ### A) YAROGNTEC / SDZNKJLTD (`ffff:0035`) — kräver systemfix
 
@@ -127,14 +168,25 @@ Delad logik: `card_convert.py`.
 - **Efter varje manuell ändring:** `vkc-kiosk save-config`  
   (speglar till `~/.config/vkc-kiosk/` utanför repot)
 
-### Google Apps Script
+### Cloudflare
 
 | Nyckel | Innehåll |
 |--------|----------|
-| `DATA_URL` | Medlemslista (fält `Kortnummer`) |
+| `CLOUDFLARE.enabled` | `true` = agent + Worker-UI. `false`/saknas = lokal Flask |
+| `CLOUDFLARE.apiUrl` | Worker-URL (utan avslutande `/`) |
+| `CLOUDFLARE.kioskId` | Skärm-id, standard `reception` |
+| `CLOUDFLARE.token` | Samma värde som Worker-secret `KIOSK_TOKEN` |
+| `CLOUDFLARE.adminToken` | Valfritt; Worker-secret `ADMIN_TOKEN` för import/slides |
+| `CLOUDFLARE.timeoutSeconds` | Timeout mot Worker vid blipp |
+
+### Google Apps Script (endast fallback / importkälla)
+
+| Nyckel | Innehåll |
+|--------|----------|
+| `DATA_URL` | Medlemslista (fält `Kortnummer`) — används av Flask och `import-from-gas.py` |
 | `TEN_VISIT_DATA_URL` | 10-kort / klippkort |
-| `LOG_URL` | Incheckningslogg |
-| `GAS_UPDATE_URL_BASE` | Klippning av 10-kort |
+| `LOG_URL` | Incheckningslogg (Flask) |
+| `GAS_UPDATE_URL_BASE` | Klippning av 10-kort (Flask) |
 
 ### Cache
 
@@ -144,7 +196,7 @@ Delad logik: `card_convert.py`.
 | `CACHE.fetchTimeoutSeconds` | `30` | Timeout mot GAS |
 | `CACHE.userAgent` | `Mifare Reader Backend` | HTTP User-Agent |
 
-Före första lyckade hämtningen visas väntetext om kort blippas. Tvinga omhämtning:
+Före första lyckade hämtningen visas väntetext om kort blippas. Tvinga omhämtning (endast Flask-läge):
 
 ```bash
 curl -s http://127.0.0.1:8081/api/cache/refresh
@@ -216,7 +268,7 @@ Efter `setup-reader` / första install: `sudo reboot`.
 
 Förväntat:
 
-- API på porten i config (standard `8081`)
+- API på porten i config (standard `8081`) **eller** Cloudflare-agent utan lokal webb-UI
 - Chromium fullskärm: slides + incheckning
 - Kortblipp → status i nedre ytan
 
@@ -231,7 +283,7 @@ vkc-kiosk logs
 
 ## 5. Ljud (valfritt)
 
-Lägg i `~/vkc-kiosk/static/`:
+Lägg i `~/vkc-kiosk/static/` (Flask) **eller** `cloudflare/public/static/` (Worker, committa/deploya):
 
 - `success.mp3`
 - `failure.mp3`
@@ -278,7 +330,7 @@ Hjälp: `vkc-kiosk` / `vkc-kiosk help`.
 
 | Kommando | sudo? | Vad det gör |
 |----------|-------|-------------|
-| `status` | nej | systemd + `/healthz` |
+| `status` | nej | systemd + healthz (Worker eller lokal) |
 | `start` / `stop` / `restart` | ja | Styra API (+ browser) |
 | `logs` | ja | `journalctl -f` |
 | `devices` | nej | Lista läsare + API |
@@ -313,13 +365,10 @@ vkc-kiosk restart
 
 | URL | Syfte |
 |-----|--------|
-| `/` | Hel kiosk |
-| `/checkin` | Bara incheckning |
-| `/stream` | SSE |
-| `/healthz` | Hälsokoll + cache |
-| `/api/cache/refresh` | Omhämtning GAS |
-| `/api/cache/lookup/<id>` | Uppslag i cache |
-| `/api/input-devices` | evdev-lista |
+| Worker `/` | Hel kiosk (Cloudflare-läge) |
+| Worker `/api/checkin` | Blipp från `agent.py` |
+| Worker `/healthz` | Hälsokoll + antal kort |
+| Lokal `/` `/checkin` `/stream` | Flask-fallback |
 
 ---
 
@@ -327,7 +376,10 @@ vkc-kiosk restart
 
 | Sökväg | Roll |
 |--------|------|
-| `app.py`, `wsgi.py` | Flask + Gunicorn |
+| `agent.py` | Kortläsar-agent mot Cloudflare |
+| `app.py`, `wsgi.py` | Flask-fallback + Gunicorn |
+| `cloudflare/` | Worker, D1, kiosk-UI |
+| `scripts/import-from-gas.py` | GAS → D1 |
 | `card_convert.py` | Kortkonvertering |
 | `reader_usb.py` | PyUSB-läsning |
 | `config.example.json` | Mall (ersätter inte din lokala config) |
@@ -354,6 +406,16 @@ vkc-kiosk restart
 
 **Kortet hittas inte**
 
+Cloudflare:
+
+```bash
+curl -sS -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$(./venv/bin/python scripts/kiosk-urls.py api)/api/admin/lookup/<id>"
+./venv/bin/python scripts/import-from-gas.py
+```
+
+Lokal Flask/GAS:
+
 ```bash
 curl -s http://127.0.0.1:8081/api/cache/refresh
 curl -s http://127.0.0.1:8081/api/cache/lookup/<id>
@@ -362,7 +424,8 @@ curl -s http://127.0.0.1:8081/api/cache/lookup/<id>
 **Tom/vit skärm**
 
 ```bash
-curl -s --max-time 3 http://127.0.0.1:8081/healthz
+vkc-kiosk url
+curl -s --max-time 3 "$(./venv/bin/python scripts/kiosk-urls.py health)"
 sudo systemctl restart vkc-kiosk vkc-kiosk-browser
 ```
 

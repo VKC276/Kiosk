@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Incheckning</title>
+<style>
+html, body {
+ font-family: 'Roboto', Arial, sans-serif;
+ transition: background-color 0.8s ease-in-out;
+ text-align: center;
+ margin: 0;
+ padding: 0;
+ height: 100%;
+ width: 100%;
+ background-color: white;
+ display: flex;
+ justify-content: center;
+ align-items: center;
+}
+body.status-green { background-color: #4CAF50 !important; }
+body.status-yellow { background-color: #FFC107 !important; }
+body.status-orange { background-color: #FF9800 !important; }
+body.status-red { background-color: #F44336 !important; }
+body.status-gray { background-color: #E0E0E0 !important; }
+body.status-purple { background-color: #9C27B0 !important; }
+body.status-blue { background-color: #2196F3 !important; }
+#status-box-wrapper {
+ max-width: 800px;
+ width: 90%;
+ background-color: white;
+ padding: 17px;
+ border-radius: 17px;
+ box-shadow: 0 8.5px 17px rgba(0,0,0,0.1);
+ z-index: 10;
+ position: relative;
+ margin: 0;
+}
+h1 { font-size: 1.38em; color: #444; margin: 8.5px 0; }
+.status-message {
+ font-size: 2.07em;
+ padding: 8.5px 17px;
+ border-radius: 8.5px;
+ margin: 8.5px 0;
+ font-weight: 400;
+ color: #000;
+}
+.name { display: none; }
+.secondary-status { font-size: 1.38em; font-weight: 700; color: #444; margin: 3.5px 0; }
+.card-number, .date { font-size: 1.21em; color: #666; margin: 3.5px 0; }
+#status-box-wrapper.resting .card-number,
+#status-box-wrapper.resting .date,
+#status-box-wrapper.resting .secondary-status { display: none; }
+#status-box-wrapper.resting .status-message {
+ font-size: 3.1em;
+ background-color: #f0f0f0 !important;
+ color: #555;
+ padding: 26px 34.5px;
+ border-radius: 17px;
+ margin: 0 !important;
+}
+</style>
+</head>
+<body>
+ <div id="status-box-wrapper" class="resting">
+  <h1>Incheckning</h1>
+  <div id="status-container">
+   <p class="status-message" id="main-message">Blippa ditt kort</p>
+   <p class="secondary-status" id="secondary-message"></p>
+   <p class="card-number" id="card-number"></p>
+   <p class="date expiry-label" id="expiry"></p>
+  </div>
+ </div>
+<script>
+const params = new URLSearchParams(location.search);
+const kioskId = params.get("kiosk") || "reception";
+const wrapper = document.getElementById("status-box-wrapper");
+const mainMessage = document.getElementById("main-message");
+const secondaryMessage = document.getElementById("secondary-message");
+const cardNumber = document.getElementById("card-number");
+const expiry = document.getElementById("expiry");
+
+const audioSuccess = new Audio("/static/success.mp3");
+const audioFailure = new Audio("/static/failure.mp3");
+const audioWarning = new Audio("/static/warning.mp3");
+
+let cfg = {
+  status_display_seconds: 3,
+  last_clip_ok_seconds: 3,
+  last_clip_return_seconds: 5,
+};
+let lastPlayedStatus = null;
+let hideTimer = null;
+let phaseTimer = null;
+
+function playSound(status) {
+  if (status === "ACTIVE" || status === "TENCARD_CLIPPED_OK" || status === "TENCARD_READY") {
+    audioSuccess.play().catch(() => {});
+  } else if (status === "EXPIRING_SOON" || status === "TENCARD_CLIPPED_LAST") {
+    audioWarning.play().catch(() => {});
+  } else if (
+    status === "EXPIRED" || status === "NOT_FOUND" || status === "INVALID_FORMAT" ||
+    status === "TENCARD_EXHAUSTED" || status === "TENCARD_CLIP_FAIL_EXHAUSTED" ||
+    status === "TENCARD_CLIP_FAIL_UNKNOWN" || status === "TENCARD_CLIP_ERROR"
+  ) {
+    audioFailure.play().catch(() => {});
+  }
+  lastPlayedStatus = status;
+}
+
+function rest() {
+  document.body.className = "";
+  wrapper.classList.add("resting");
+  mainMessage.textContent = "Blippa ditt kort";
+  secondaryMessage.textContent = "";
+  cardNumber.textContent = "";
+  expiry.textContent = "";
+  lastPlayedStatus = null;
+}
+
+function showStatus(data, options) {
+  clearTimeout(hideTimer);
+  clearTimeout(phaseTimer);
+  if (!data) {
+    rest();
+    return;
+  }
+  wrapper.classList.remove("resting");
+  document.body.className = data.status_color ? ("status-" + data.status_color) : "";
+  mainMessage.textContent = data.message || "";
+  secondaryMessage.textContent = data.secondary_message || "";
+  cardNumber.textContent = data.card_number_dec ? ("Kortnr: " + data.card_number_dec) : "";
+  if (data.type === "MEMBER" && data.expiry_date) {
+    expiry.textContent = "Giltig till: " + String(data.expiry_date).split("T")[0];
+  } else {
+    expiry.textContent = "";
+  }
+  const status = data.status;
+  if (!options || !options.silent) {
+    if (status && status !== lastPlayedStatus && status !== "RESTING") playSound(status);
+  }
+  let displayMs = (cfg.status_display_seconds || 3) * 1000;
+  if (status === "TENCARD_CLIPPED_LAST") {
+    displayMs = ((cfg.last_clip_ok_seconds || 3) + (cfg.last_clip_return_seconds || 5)) * 1000;
+    phaseTimer = setTimeout(() => {
+      mainMessage.textContent = "Lämna in kortet i reception";
+      secondaryMessage.textContent = "";
+      document.body.className = "status-orange";
+    }, (cfg.last_clip_ok_seconds || 3) * 1000);
+  }
+  hideTimer = setTimeout(rest, displayMs);
+}
+
+function showReading() {
+  clearTimeout(hideTimer);
+  clearTimeout(phaseTimer);
+  wrapper.classList.remove("resting");
+  document.body.className = "status-blue";
+  mainMessage.textContent = "Läser kort…";
+  secondaryMessage.textContent = "";
+  cardNumber.textContent = "";
+  expiry.textContent = "";
+}
+
+function connectWs() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(proto + "//" + location.host + "/api/kiosk/ws?kiosk=" + encodeURIComponent(kioskId));
+  ws.onmessage = (ev) => {
+    if (ev.data === "pong") return;
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === "reading") showReading();
+    if (msg.type === "status") showStatus(msg.data);
+    if (msg.type === "clear") rest();
+  };
+  ws.onclose = () => setTimeout(connectWs, 1500);
+  ws.onerror = () => ws.close();
+}
+
+fetch("/api/kiosk/config?kiosk=" + encodeURIComponent(kioskId))
+  .then((r) => r.json())
+  .then((payload) => { if (payload.config) cfg = Object.assign(cfg, payload.config); })
+  .catch(() => {})
+  .finally(connectWs);
+</script>
+</body>
+</html>

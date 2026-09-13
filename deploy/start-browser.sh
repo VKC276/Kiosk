@@ -5,14 +5,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PORT="$(python3 - <<PY
-import json
-from pathlib import Path
-cfg = json.loads(Path("${ROOT_DIR}/config.json").read_text(encoding="utf-8"))
-print(int((cfg.get("SERVER") or {}).get("port", 8081)))
-PY
-)"
-URL="http://127.0.0.1:${PORT}/"
+if [[ -x "${ROOT_DIR}/venv/bin/python" ]]; then
+  URL="$("${ROOT_DIR}/venv/bin/python" "${ROOT_DIR}/scripts/kiosk-urls.py" browser)"
+else
+  URL="$(python3 "${ROOT_DIR}/scripts/kiosk-urls.py" browser)"
+fi
 PROFILE_DIR="${HOME}/.config/vkc-kiosk-chromium"
 LOCK_FILE="${PROFILE_DIR}/.start.lock"
 mkdir -p "${PROFILE_DIR}"

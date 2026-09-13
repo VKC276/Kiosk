@@ -16,9 +16,14 @@ function arg(name, fallback = "") {
   return process.argv[i + 1] || fallback;
 }
 
-function sqlString(value) {
-  if (value == null || value === "") return "NULL";
+function sqlQuote(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function sqlString(value, { emptyAsNull = true } = {}) {
+  if (value == null) return "NULL";
+  if (value === "" && emptyAsNull) return "NULL";
+  return sqlQuote(value);
 }
 
 function formatDate(value) {
@@ -103,7 +108,7 @@ const adminToken = arg("--admin-token") || process.env.ADMIN_TOKEN || "";
 if (wantSql || sqlOut) {
   const stmts = mapped.map((c) => {
     return `INSERT INTO cards (card_id, kind, name, status, expires_at, remaining, last_clipped_at, updated_at)
-VALUES (${sqlString(c.card_id)}, 'tencard', ${sqlString(c.name)}, ${sqlString(c.status)}, NULL, ${c.remaining}, ${sqlString(c.last_clipped_at)}, datetime('now'))
+VALUES (${sqlString(c.card_id)}, 'tencard', ${sqlString(c.name, { emptyAsNull: false })}, ${sqlString(c.status, { emptyAsNull: false })}, NULL, ${c.remaining}, ${sqlString(c.last_clipped_at)}, datetime('now'))
 ON CONFLICT(card_id) DO UPDATE SET
   kind = 'tencard',
   name = excluded.name,

@@ -201,7 +201,11 @@ Delad logik: `card_convert.py`.
 | `LOG_URL` | Incheckningslogg (Flask) |
 | `GAS_UPDATE_URL_BASE` | Klippning av 10-kort (Flask) |
 
-### Cache
+### Cache (endast Flask-fallback)
+
+Cloudflare-läget laddar **inte** ner kortlistan till Pi:n. Ett blipp = ett API-anrop.
+
+Lokal Flask mot GAS använder fortfarande:
 
 | Nyckel | Standard | Betydelse |
 |--------|----------|-----------|

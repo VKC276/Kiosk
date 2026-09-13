@@ -1,7 +1,8 @@
 # Cloudflare Worker — VKC 10-kort / incheckning
 
 Kioskskärmen kan ligga kvar på **GitHub Pages**. Raspberry Pi kör bara `agent.py`:
-läs kortnummer → `POST /api/clip` med `KIOSK_TOKEN` → API svarar med klipp kvar / slut.
+läs **ett** kortnummer → `POST /api/clip` med `KIOSK_TOKEN` → API svarar med klipp kvar / slut.
+Ingen lokal kopia av 10-kortslistan — internet behövs ändå för skärmen.
 Workern pushar samma status till incheckningsytan (iframe mot Workern).
 
 `KIOSK_TOKEN` kan **bara klippa befintliga kort**. Den kan inte skapa kort eller sätta saldo.

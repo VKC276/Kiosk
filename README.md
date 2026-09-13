@@ -4,8 +4,8 @@ Lokal kiosk + MIFARE-incheckning för Västerviks klättercenter (Raspberry Pi).
 
 - **Övre ytan:** timer-styrd karusell (iframes / WallFlow / RSS)
 - **Nedre ytan:** kortincheckning (medlem + 10-kort)
-- **Cloudflare (rekommenderat):** D1-databas + Worker-UI. Pi kör bara ett läsarskript (`agent.py`) och Chromium. Check-in är ett D1-uppslag — millisekunder, inte Google Apps Script.
-- **Fallback:** Flask/Gunicorn mot GAS om `CLOUDFLARE.enabled` är `false`
+- **Cloudflare (rekommenderat):** Pi skickar bara det blippade kortnumret till Workern. Ingen lokal kortlista — kiosken behöver internet ändå (Pages/WallFlow).
+- **Fallback:** Flask med nedladdad GAS-cache om `CLOUDFLARE.enabled` är `false`
 
 Full guide: **[INSTALLATION.md](INSTALLATION.md)** · Worker: **[cloudflare/README.md](cloudflare/README.md)**
 

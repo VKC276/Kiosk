@@ -19,7 +19,7 @@
     {
       "binding": "DB",
       "database_name": "vkc-kiosk",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "934a0447-8ce7-44db-b451-b99d46bb769c",
       "migrations_dir": "migrations"
     }
   ],

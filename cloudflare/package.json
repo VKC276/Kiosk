@@ -8,9 +8,11 @@
     "types": "wrangler types",
     "test": "vitest run",
     "migrate:local": "wrangler d1 migrations apply vkc-kiosk --local",
-    "migrate:remote": "wrangler d1 migrations apply vkc-kiosk --remote"
+    "migrate:remote": "wrangler d1 migrations apply vkc-kiosk --remote",
+    "import:xlsx:sql": "node scripts/import-from-xlsx.mjs"
   },
   "devDependencies": {
+    "xlsx": "^0.18.5",
     "@cloudflare/workers-types": "latest",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",

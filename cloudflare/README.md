@@ -45,11 +45,21 @@ Sätt samma adress i `CLOUDFLARE.kioskUrl`. Inchecknings-iframe laddas från Wor
 
 Kolumner: `Kortnummer`, `Antal kvarvarande besök`, `Status`, `Senast klippt`.
 
-```bash
-pip install openpyxl
-./venv/bin/python scripts/import-from-xlsx.py Förteckning\ 10-kort.xlsx \
-  --api-url https://vkc-kiosk.<konto>.workers.dev \
-  --admin-token "$ADMIN_TOKEN"
+På Windows (Node, samma som Wrangler — Python behövs inte). `--sql` fyller D1 via inloggad Wrangler, utan `ADMIN_TOKEN`:
+
+```powershell
+cd cloudflare
+npm install
+node scripts/import-from-xlsx.mjs "..\sökväg\Förteckning 10-kort.xlsx" --sql-file import-tencards.sql
+npx wrangler d1 execute vkc-kiosk --remote --file=import-tencards.sql
+```
+
+Eller mot admin-API:t om token redan är satt:
+
+```powershell
+node scripts/import-from-xlsx.mjs "..\sökväg\Förteckning 10-kort.xlsx" `
+  --api-url https://vkc-kiosk.muddy-rice-38d4.workers.dev `
+  --admin-token "DIN_ADMIN_TOKEN"
 ```
 
 ## Importera från Google Apps Script

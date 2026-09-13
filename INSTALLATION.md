@@ -73,11 +73,22 @@ Görs en gång från en dator med Wrangler (kan vara samma som deploy-maskinen, 
 "CLOUDFLARE": {
   "enabled": true,
   "apiUrl": "https://vkc-kiosk.<konto>.workers.dev",
+  "kioskUrl": "https://vkc276.github.io/Kiosk/",
   "kioskId": "reception",
   "token": "<samma som KIOSK_TOKEN>",
   "adminToken": "",
   "timeoutSeconds": 5
 }
+```
+
+`token` (KIOSK_TOKEN) ligger bara på Pi:n och får bara klippa. `adminToken` ska **inte** in i kiosken. Nya kort / saldo läggs till via `ADMIN_TOKEN` (Excel-import nu, WallFlow senare för superadmin/hallvärd).
+
+Importera nuvarande lista:
+
+```bash
+./venv/bin/python scripts/import-from-xlsx.py "Förteckning 10-kort.xlsx" \
+  --api-url https://vkc-kiosk.<konto>.workers.dev \
+  --admin-token "$ADMIN_TOKEN"
 ```
 
 `adminToken` behövs bara om Pi:n ska publicera karusellen (`vkc-kiosk slides`). Annars räcker kiosk-token.

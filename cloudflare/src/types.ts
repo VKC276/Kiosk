@@ -22,6 +22,7 @@ export type TencardRow = {
   card_id: string;
   name: string;
   remaining: number;
+  last_clipped_at?: string | null;
 };
 
 export type KioskConfig = {
@@ -43,6 +44,7 @@ export type CardRow = {
   status: string;
   expires_at: string | null;
   remaining: number | null;
+  last_clipped_at?: string | null;
 };
 
 export type CardStore = {

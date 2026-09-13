@@ -33,15 +33,32 @@ export function memberFromGas(row: GasMember): { card_id: string; name: string; 
   };
 }
 
-export function tencardFromGas(row: GasTencard): { card_id: string; name: string; remaining: number } | null {
+export function tencardFromGas(row: GasTencard): {
+  card_id: string;
+  name: string;
+  remaining: number;
+  status: string;
+  last_clipped_at: string | null;
+} | null {
   const cardId = normalizeCardNumber(pick(row, ["Kortnummer", "card_id", "kortnummer"]));
   if (!cardId) return null;
   const remainingRaw = pick(row, ["Antal kvarvarande besök", "remaining", "klipp_kvar"]);
   const remaining = Number(remainingRaw);
+  const lastRaw = pick(row, ["Senast klippt", "last_clipped_at", "lastClipped"]);
+  let last_clipped_at: string | null = null;
+  if (lastRaw instanceof Date) {
+    last_clipped_at = lastRaw.toISOString().replace("T", " ").slice(0, 19);
+  } else if (lastRaw != null && String(lastRaw).trim()) {
+    last_clipped_at = String(lastRaw).trim();
+  }
+  const remainingInt = Number.isFinite(remaining) ? Math.max(0, Math.trunc(remaining)) : 0;
+  const statusRaw = String(pick(row, ["Status", "status"]) || "").trim();
   return {
     card_id: cardId,
     name: String(pick(row, ["Namn", "name"]) || "").trim(),
-    remaining: Number.isFinite(remaining) ? Math.max(0, Math.trunc(remaining)) : 0,
+    remaining: remainingInt,
+    status: statusRaw || (remainingInt > 0 ? "Aktivt" : "Inga besök kvar"),
+    last_clipped_at,
   };
 }
 
@@ -94,20 +111,29 @@ export async function upsertTencards(db: D1Database, rows: GasTencard[]): Promis
     stmts.push(
       db
         .prepare(
-          `INSERT INTO cards (card_id, kind, name, status, expires_at, remaining, updated_at)
-           VALUES (?, 'tencard', ?, '', NULL, ?, datetime('now'))
+          `INSERT INTO cards (card_id, kind, name, status, expires_at, remaining, last_clipped_at, updated_at)
+           VALUES (?, 'tencard', ?, ?, NULL, ?, ?, datetime('now'))
            ON CONFLICT(card_id) DO UPDATE SET
              kind = 'tencard',
              name = excluded.name,
              remaining = excluded.remaining,
-             status = '',
+             status = excluded.status,
              expires_at = NULL,
+             last_clipped_at = excluded.last_clipped_at,
              updated_at = datetime('now')
            WHERE cards.kind IS NOT 'tencard'
              OR cards.name IS NOT excluded.name
-             OR cards.remaining IS NOT excluded.remaining`,
+             OR cards.remaining IS NOT excluded.remaining
+             OR cards.status IS NOT excluded.status
+             OR cards.last_clipped_at IS NOT excluded.last_clipped_at`,
         )
-        .bind(mapped.card_id, mapped.name, mapped.remaining),
+        .bind(
+          mapped.card_id,
+          mapped.name,
+          mapped.status,
+          mapped.remaining,
+          mapped.last_clipped_at,
+        ),
     );
     upserted += 1;
   }
@@ -219,6 +245,56 @@ export async function saveKioskConfig(db: D1Database, cfg: KioskConfig): Promise
       cfg.status_display_seconds,
       cfg.last_clip_ok_seconds,
       cfg.last_clip_return_seconds,
+    )
+    .run();
+}
+
+export async function listTencards(db: D1Database) {
+  const result = await db
+    .prepare(
+      `SELECT card_id, remaining, status, last_clipped_at, name
+       FROM cards WHERE kind = 'tencard' ORDER BY card_id`,
+    )
+    .all<{
+      card_id: string;
+      remaining: number | null;
+      status: string;
+      last_clipped_at: string | null;
+      name: string;
+    }>();
+  return result.results || [];
+}
+
+export async function saveTencard(
+  db: D1Database,
+  input: {
+    card_id: string;
+    remaining: number;
+    status?: string;
+    last_clipped_at?: string | null;
+    name?: string;
+  },
+): Promise<void> {
+  const remaining = Math.max(0, Math.trunc(Number(input.remaining)));
+  const status = (input.status || (remaining > 0 ? "Aktivt" : "Inga besök kvar")).trim();
+  await db
+    .prepare(
+      `INSERT INTO cards (card_id, kind, name, status, remaining, last_clipped_at, updated_at)
+       VALUES (?, 'tencard', ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(card_id) DO UPDATE SET
+         kind = 'tencard',
+         name = excluded.name,
+         status = excluded.status,
+         remaining = excluded.remaining,
+         last_clipped_at = excluded.last_clipped_at,
+         updated_at = datetime('now')`,
+    )
+    .bind(
+      input.card_id,
+      input.name || "",
+      status,
+      remaining,
+      input.last_clipped_at ?? null,
     )
     .run();
 }

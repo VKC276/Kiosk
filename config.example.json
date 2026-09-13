@@ -2,6 +2,7 @@
   "CLOUDFLARE": {
     "enabled": true,
     "apiUrl": "https://vkc-kiosk.REPLACE_ME.workers.dev",
+    "kioskUrl": "https://vkc276.github.io/Kiosk/",
     "kioskId": "reception",
     "token": "REPLACE_ME_KIOSK_TOKEN",
     "adminToken": "",

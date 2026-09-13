@@ -17,11 +17,16 @@ cf = cfg.get("CLOUDFLARE") or {}
 enabled = bool(cf.get("enabled"))
 api = str(cf.get("apiUrl") or "").rstrip("/")
 kiosk_id = str(cf.get("kioskId") or "reception")
+kiosk_url = str(cf.get("kioskUrl") or "").strip()
 
 if enabled and api:
     mode = "cloudflare"
     health = f"{api}/healthz"
-    browser = f"{api}/?kiosk={kiosk_id}"
+    if kiosk_url:
+        joiner = "&" if "?" in kiosk_url else "?"
+        browser = f"{kiosk_url}{joiner}api={api}&kiosk={kiosk_id}"
+    else:
+        browser = f"{api}/?kiosk={kiosk_id}"
     backend = "agent"
 else:
     mode = "local"

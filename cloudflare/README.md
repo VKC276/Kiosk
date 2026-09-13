@@ -1,7 +1,11 @@
-# Cloudflare Worker — VKC incheckning
+# Cloudflare Worker — VKC 10-kort / incheckning
 
-Kiosk-UI + D1-databas + check-in-API på Cloudflare. Raspberry Pi kör bara
-`agent.py` (kortläsare) och Chromium mot den här Workern.
+Kioskskärmen kan ligga kvar på **GitHub Pages**. Raspberry Pi kör bara `agent.py`:
+läs kortnummer → `POST /api/clip` med `KIOSK_TOKEN` → API svarar med klipp kvar / slut.
+Workern pushar samma status till incheckningsytan (iframe mot Workern).
+
+`KIOSK_TOKEN` kan **bara klippa befintliga kort**. Den kan inte skapa kort eller sätta saldo.
+Nya kort och manuell justering kräver `ADMIN_TOKEN` (senare WallFlow för superadmin/hallvärd).
 
 ## En gång
 
@@ -23,8 +27,27 @@ npx wrangler secret put ADMIN_TOKEN
 npx wrangler deploy
 ```
 
-Samma `KIOSK_TOKEN` ska stå i Pi:ns `config.json` under `CLOUDFLARE.token`.
-`ADMIN_TOKEN` används bara för import och karusell-publicering.
+Samma `KIOSK_TOKEN` ska stå i Pi:ns `config.json` under `CLOUDFLARE.token` — aldrig i GitHub Pages.
+`ADMIN_TOKEN` används för import och (senare) WallFlow-admin.
+
+## GitHub Pages
+
+Chromium öppnar Pages-URL:en. Peka incheckningen mot Workern med query `api`:
+
+`https://vkc276.github.io/Kiosk/?api=https://vkc-kiosk.<konto>.workers.dev&kiosk=reception`
+
+Sätt samma adress i `CLOUDFLARE.kioskUrl`. Inchecknings-iframe laddas från Workern (WebSocket samma origin). Pages har inget secret.
+
+## Importera 10-kort från Excel
+
+Kolumner: `Kortnummer`, `Antal kvarvarande besök`, `Status`, `Senast klippt`.
+
+```bash
+pip install openpyxl
+./venv/bin/python scripts/import-from-xlsx.py Förteckning\ 10-kort.xlsx \
+  --api-url https://vkc-kiosk.<konto>.workers.dev \
+  --admin-token "$ADMIN_TOKEN"
+```
 
 ## Importera från Google Apps Script
 
@@ -64,7 +87,9 @@ curl -sS -X POST http://127.0.0.1:8787/api/checkin \
 | GET | `/api/kiosk/config?kiosk=` | nej | slides + timeouts (1 rad) |
 | GET | `/api/kiosk/ws?kiosk=` | nej | WebSocket till skärmen |
 | POST | `/api/checkin/reading` | KIOSK | blå "Läser kort…" (ingen D1) |
-| POST | `/api/checkin` | KIOSK | 1 rad läst; 10-kort skriver 1 rad |
+| POST | `/api/clip` eller `/api/checkin` | KIOSK | klipp; svar `{ remaining, exhausted, status }` |
+| GET | `/api/admin/tencards` | ADMIN | lista 10-kort (WallFlow) |
+| POST | `/api/admin/tencards` | ADMIN | skapa/uppdatera saldo (WallFlow) |
 | POST | `/api/admin/import/members` | ADMIN | GAS-format JSON-lista |
 | POST | `/api/admin/import/tencards` | ADMIN | GAS-format JSON-lista |
 | PUT | `/api/admin/kiosk/config` | ADMIN | karusell |

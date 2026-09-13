@@ -87,6 +87,16 @@
   <script>
     const params = new URLSearchParams(location.search);
     const kioskId = params.get("kiosk") || "reception";
+    function apiOrigin(raw) {
+      try {
+        const u = new URL(raw || location.origin);
+        if (u.protocol !== "https:" && u.protocol !== "http:") return location.origin;
+        return u.origin;
+      } catch (_) {
+        return location.origin;
+      }
+    }
+    const API = apiOrigin(params.get("api"));
 
     function splitUrlAndHash(url) {
       const raw = String(url || "");
@@ -121,7 +131,7 @@
     }
 
     async function boot() {
-      const res = await fetch("/api/kiosk/config?kiosk=" + encodeURIComponent(kioskId));
+      const res = await fetch(API + "/api/kiosk/config?kiosk=" + encodeURIComponent(kioskId));
       const payload = await res.json();
       const cfg = payload.config || {};
       const slides = normalizeSlides(cfg.slides);
@@ -145,7 +155,7 @@
           ${slideHtml}
           <div class="slide-timer" aria-hidden="true"><div class="slide-timer__bar" id="slide-timer-bar"></div></div>
         </div>
-        ${checkinEnabled ? `<div class="card-reader-section"><iframe id="checkin-frame" src="/checkin.html?kiosk=${encodeURIComponent(kioskId)}&status=${encodeURIComponent(cfg.status_display_seconds || 3)}&lastOk=${encodeURIComponent(cfg.last_clip_ok_seconds || 3)}&lastReturn=${encodeURIComponent(cfg.last_clip_return_seconds || 5)}" title="Incheckning" loading="eager"></iframe></div>` : ""}
+        ${checkinEnabled ? `<div class="card-reader-section"><iframe id="checkin-frame" src="${API}/checkin.html?kiosk=${encodeURIComponent(kioskId)}&status=${encodeURIComponent(cfg.status_display_seconds || 3)}&lastOk=${encodeURIComponent(cfg.last_clip_ok_seconds || 3)}&lastReturn=${encodeURIComponent(cfg.last_clip_return_seconds || 5)}" title="Incheckning" loading="eager"></iframe></div>` : ""}
       `;
 
       const SLIDE_URL_BY_ID = Object.fromEntries(slides.map((s) => [String(s.id), String(s.url || "")]));

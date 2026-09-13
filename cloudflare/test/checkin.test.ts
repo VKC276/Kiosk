@@ -151,11 +151,15 @@ describe("GAS import mapping", () => {
         Kortnummer: 99,
         Namn: "Klippkorts-användare",
         "Antal kvarvarande besök": 8,
+        Status: "Aktivt",
+        "Senast klippt": "2026-07-23 16:44:45",
       }),
     ).toEqual({
       card_id: "99",
       name: "Klippkorts-användare",
       remaining: 8,
+      status: "Aktivt",
+      last_clipped_at: "2026-07-23 16:44:45",
     });
   });
 });

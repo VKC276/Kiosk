@@ -5,7 +5,7 @@ export function d1CardStore(db: D1Database): CardStore {
     async getCard(cardId: string): Promise<CardRow | null> {
       const row = await db
         .prepare(
-          `SELECT card_id, kind, name, status, expires_at, remaining
+          `SELECT card_id, kind, name, status, expires_at, remaining, last_clipped_at
            FROM cards WHERE card_id = ?`,
         )
         .bind(cardId)
@@ -17,9 +17,12 @@ export function d1CardStore(db: D1Database): CardStore {
       const row = await db
         .prepare(
           `UPDATE cards
-           SET remaining = remaining - 1, updated_at = datetime('now')
+           SET remaining = remaining - 1,
+               last_clipped_at = datetime('now'),
+               status = CASE WHEN remaining - 1 <= 0 THEN 'Inga besök kvar' ELSE 'Aktivt' END,
+               updated_at = datetime('now')
            WHERE card_id = ? AND kind = 'tencard' AND remaining > 0
-           RETURNING remaining, name`,
+           RETURNING remaining, name, status`,
         )
         .bind(cardId)
         .first<{ remaining: number; name: string }>();

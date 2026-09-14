@@ -29,7 +29,11 @@ vkc-kiosk restart
 
 Övriga keyboard-wedge-läsare: bara `configure-reader` (ingen `setup-reader`).
 
-Sätt sedan `CLOUDFLARE` i `config.json` (Worker-URL + kiosk-token) efter [cloudflare/README.md](cloudflare/README.md).
+Befintlig Pi med fungerande läsare → Cloudflare (släcker Flask, behåller READER):
+
+```bash
+sudo KIOSK_TOKEN='samma-som-wrangler-secret' ./scripts/switch-to-cloudflare.sh
+```
 
 ---
 
@@ -44,7 +48,8 @@ vkc-kiosk help
 | `status` / `start` / `stop` / `restart` / `logs` | Tjänster + healthz / journal |
 | `devices` | Lista kortläsare |
 | `pull` | `git pull` med skydd av `config.json` |
-| `update` | `pull` + pip + ominstallation |
+| `update` | `pull` + pip + ominstallation (`SKIP_READER`) |
+| `switch-cloudflare` | Flask/GAS → Cloudflare, behåller läsarconfig |
 | `config` | Öppna `config.json` |
 | `save-config` | Spegla config → `~/.config/vkc-kiosk/` (**kör efter manuell edit**) |
 | `restore-config` | Återställ från `~/.config/vkc-kiosk/` |

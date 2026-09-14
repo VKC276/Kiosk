@@ -115,6 +115,16 @@ Fält motsvarar Excel: Kortnummer, Antal kvarvarande besök, Status, Senast klip
 
 404 om kortet saknas eller är medlemskort.
 
+### Klipp (atomiskt, remaining − 1)
+
+`POST /api/admin/tencards/623662933/clip`
+
+Svar: `{ "ok": true, "remaining": 9, "card": { ... } }`. 409 om 0 klipp kvar.
+
+### Ta bort
+
+`DELETE /api/admin/tencards/623662933`
+
 ### Skapa eller uppdatera (nytt kort / sätt saldo till 10)
 
 `POST /api/admin/tencards`

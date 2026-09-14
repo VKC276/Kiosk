@@ -47,6 +47,7 @@ sudo ./install.sh
 sudo KIOSK_USER=vkc KIOSK_DIR=/home/vkc/vkc-kiosk ./install.sh
 sudo SKIP_BROWSER=1 ./install.sh    # bara API
 sudo SKIP_APT=1 ./install.sh        # vid uppdatering / ominstallation
+sudo SKIP_READER=1 ./install.sh     # rör inte USB-quirk / READER i config
 ```
 
 ---
@@ -67,35 +68,18 @@ Görs en gång från en dator med Wrangler (kan vara samma som deploy-maskinen, 
   --admin-token "$ADMIN_TOKEN"
 ```
 
-6. På Pi:n i `config.json`:
-
-```json
-"CLOUDFLARE": {
-  "enabled": true,
-  "apiUrl": "https://vkc-kiosk.<konto>.workers.dev",
-  "kioskUrl": "https://vkc276.github.io/Kiosk/",
-  "kioskId": "reception",
-  "token": "<samma som KIOSK_TOKEN>",
-  "adminToken": "",
-  "timeoutSeconds": 5
-}
-```
-
-`token` (KIOSK_TOKEN) ligger bara på Pi:n och får bara klippa. `adminToken` ska **inte** in i kiosken. Nya kort / saldo läggs till via `ADMIN_TOKEN` (Excel-import nu, WallFlow senare för superadmin/hallvärd).
-
-Importera nuvarande lista:
+6. På **befintlig Pi**: byt till Cloudflare utan att ställa in läsaren igen. Använd samma `KIOSK_TOKEN` som `npx wrangler secret put KIOSK_TOKEN` (inte admin-token):
 
 ```bash
-./venv/bin/python scripts/import-from-xlsx.py "Förteckning 10-kort.xlsx" \
-  --api-url https://vkc-kiosk.<konto>.workers.dev \
-  --admin-token "$ADMIN_TOKEN"
+cd ~/vkc-kiosk
+sudo KIOSK_TOKEN='samma-som-wrangler-secret' ./scripts/switch-to-cloudflare.sh
 ```
 
-`adminToken` behövs bara om Pi:n ska publicera karusellen (`vkc-kiosk slides`). Annars räcker kiosk-token.
+Skriptet sparar `config.json` (`READER` / `CARD_PROCESSING`), checkar ut Cloudflare-grenen, släcker Flask/Gunicorn och `mifare-reader`, rör inte USB-quirk/udev, och startar `agent.py` + Chromium mot Workern.
 
-7. `vkc-kiosk save-config && sudo SKIP_APT=1 ./install.sh` (eller `vkc-kiosk update`) så systemd kör `agent.py` och Chromium öppnar Worker-URL:en.
+Kör **inte** `setup-reader` eller `configure-reader` om läsaren redan fungerar. `adminToken` ska inte in på kiosken.
 
-`vkc-kiosk url` visar adressen Chromium använder. `vkc-kiosk status` curl:ar Worker `/healthz` (utan D1-fråga).
+7. `vkc-kiosk url` och `vkc-kiosk status`. Chromium ska inte öppna `localhost:8081`. `vkc-kiosk update` använder `SKIP_READER=1`.
 
 Med ~50 kort är D1-kostnaden per blipp **1 rad läst** (medlemskort) eller **1 läst + 1 skriven** (10-kortsklipp). Importera inte om listan är oförändrad. Detaljer: [cloudflare/README.md](cloudflare/README.md).
 
@@ -105,7 +89,9 @@ Befintliga installationer utan `CLOUDFLARE.enabled` fortsätter med lokal Flask 
 
 ### A) YAROGNTEC / SDZNKJLTD (`ffff:0035`) — kräver systemfix
 
-Läsaren kan krascha Pi USB (`HC died`) om kernel-`usbhid` binder interface 1. Kör **alltid**:
+Hoppa över det här avsnittet om läsaren redan är inkörd (`switch-to-cloudflare.sh` rör den inte).
+
+Läsaren kan krascha Pi USB (`HC died`) om kernel-`usbhid` binder interface 1. På **ny** Pi, kör:
 
 ```bash
 sudo vkc-kiosk setup-reader

@@ -13,6 +13,7 @@
 #   KIOSK_BRANCH=main
 #   SKIP_BROWSER=1          # installera bara API-tjänsten
 #   SKIP_APT=1              # hoppa över apt-get
+#   SKIP_READER=1           # rör inte USB-quirk / READER i config.json
 set -euo pipefail
 
 REPO_DEFAULT="https://github.com/VKC276/Kiosk.git"
@@ -190,8 +191,11 @@ setup_permissions() {
   if [[ -f "${KIOSK_DIR}/deploy/99-vkc-kiosk-input.rules" ]]; then
     cp "${KIOSK_DIR}/deploy/99-vkc-kiosk-input.rules" /etc/udev/rules.d/99-vkc-kiosk-input.rules
   fi
-  # SDZNKJLTD-läsare (ffff:0035): iface 1 kan döda xHCI på Pi
-  if [[ -x "${KIOSK_DIR}/deploy/install-usb-reader-quirk.sh" ]]; then
+  # SDZNKJLTD-läsare (ffff:0035): iface 1 kan döda xHCI på Pi.
+  # SKIP_READER=1 vid uppdatering / Cloudflare-byte — skriv inte om READER i config.
+  if [[ "${SKIP_READER:-0}" == "1" ]]; then
+    warn "SKIP_READER=1 — behåller befintlig USB-quirk och READER i config.json"
+  elif [[ -x "${KIOSK_DIR}/deploy/install-usb-reader-quirk.sh" ]]; then
     "${KIOSK_DIR}/deploy/install-usb-reader-quirk.sh" || warn "USB-reader quirk installerades inte"
   elif [[ -f "${KIOSK_DIR}/deploy/99-sdznkj-usb-reader.rules" ]]; then
     cp "${KIOSK_DIR}/deploy/99-sdznkj-usb-reader.rules" /etc/udev/rules.d/99-sdznkj-usb-reader.rules
@@ -265,13 +269,10 @@ VKC Kiosk installerad
   Backend:  ${KIOSK_DIR}/scripts/start-kiosk-backend.sh
   Tjänster: vkc-kiosk.service$([ "${SKIP_BROWSER:-0}" = "1" ] || echo " + vkc-kiosk-browser.service")
 
-Nästa steg (Cloudflare):
-  1) Deploy:a worker enligt cloudflare/README.md
-  2) Importera data: python scripts/import-from-gas.py
-  3) Sätt CLOUDFLARE.enabled/apiUrl/token i config.json
-  4) vkc-kiosk save-config && vkc-kiosk restart
+Nästa steg (befintlig Pi → Cloudflare, behåll läsare):
+  sudo KIOSK_TOKEN='...' ./scripts/switch-to-cloudflare.sh
 
-Lokal Flask/GAS (fallback): lämna CLOUDFLARE.enabled=false
+Lokal Flask/GAS (fallback): CLOUDFLARE.enabled=false — undvik om Workern är live.
 ────────────────────────────────────────────────────────
 EOF
 }

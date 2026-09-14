@@ -274,8 +274,18 @@ export async function saveTencard(
     last_clipped_at?: string | null;
     name?: string;
   },
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const remaining = Math.max(0, Math.trunc(Number(input.remaining)));
+  if (!Number.isFinite(remaining)) {
+    return { ok: false, error: "remaining required", status: 400 };
+  }
+  const existing = await db
+    .prepare(`SELECT kind FROM cards WHERE card_id = ?`)
+    .bind(input.card_id)
+    .first<{ kind: string }>();
+  if (existing && existing.kind !== "tencard") {
+    return { ok: false, error: "card_id is not a 10-kort", status: 409 };
+  }
   const status = (input.status || (remaining > 0 ? "Aktivt" : "Inga besök kvar")).trim();
   await db
     .prepare(
@@ -286,7 +296,7 @@ export async function saveTencard(
          name = excluded.name,
          status = excluded.status,
          remaining = excluded.remaining,
-         last_clipped_at = excluded.last_clipped_at,
+         last_clipped_at = COALESCE(excluded.last_clipped_at, cards.last_clipped_at),
          updated_at = datetime('now')`,
     )
     .bind(
@@ -297,4 +307,17 @@ export async function saveTencard(
       input.last_clipped_at ?? null,
     )
     .run();
+  return { ok: true };
+}
+
+export async function deleteTencard(db: D1Database, cardId: string) {
+  const existing = await db
+    .prepare(`SELECT kind FROM cards WHERE card_id = ?`)
+    .bind(cardId)
+    .first<{ kind: string }>();
+  if (!existing || existing.kind !== "tencard") {
+    return { deleted: false, reason: existing ? "not_tencard" : "not_found" as const };
+  }
+  await db.prepare(`DELETE FROM cards WHERE card_id = ? AND kind = 'tencard'`).bind(cardId).run();
+  return { deleted: true as const };
 }

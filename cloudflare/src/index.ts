@@ -3,6 +3,7 @@ import { jsonWithCors, preflight } from "./cors";
 import { performCheckin } from "./checkin";
 import { d1CardStore } from "./d1-store";
 import {
+  deleteTencard,
   listTencards,
   loadKioskConfig,
   saveKioskConfig,
@@ -145,15 +146,51 @@ export default {
         if (typeof body.remaining !== "number" && typeof body.remaining !== "string") {
           return json(request, { ok: false, error: "remaining required" }, 400);
         }
-        await saveTencard(env.DB, {
+        const saved = await saveTencard(env.DB, {
           card_id: cardId,
           remaining: Number(body.remaining),
           status: body.status != null ? String(body.status) : undefined,
           last_clipped_at: body.last_clipped_at != null ? String(body.last_clipped_at) : null,
           name: body.name != null ? String(body.name) : "",
         });
+        if (!saved.ok) return json(request, { ok: false, error: saved.error }, saved.status);
         const card = await d1CardStore(env.DB).getCard(cardId);
         return json(request, { ok: true, card_id: cardId, card });
+      }
+
+      const tencardClip = url.pathname.match(/^\/api\/admin\/tencards\/([^/]+)\/clip$/);
+      if (tencardClip && request.method === "POST") {
+        const cardId = decodeURIComponent(tencardClip[1] || "");
+        if (!cardId) return json(request, { ok: false, error: "card_id required" }, 400);
+        const clip = await d1CardStore(env.DB).clipTencard(cardId);
+        if (clip === "missing") return json(request, { ok: false, error: "not_found" }, 404);
+        if (clip === "exhausted") {
+          const card = await d1CardStore(env.DB).getCard(cardId);
+          return json(request, { ok: false, error: "exhausted", card }, 409);
+        }
+        const card = await d1CardStore(env.DB).getCard(cardId);
+        return json(request, { ok: true, card_id: cardId, remaining: clip.remaining, card });
+      }
+
+      if (url.pathname.startsWith("/api/admin/tencards/") && request.method === "DELETE") {
+        const cardId = decodeURIComponent(url.pathname.slice("/api/admin/tencards/".length));
+        if (!cardId || cardId.indexOf("/") >= 0) return json(request, { ok: false, error: "card_id required" }, 400);
+        const result = await deleteTencard(env.DB, cardId);
+        if (!result.deleted) {
+          return json(request, { ok: false, error: result.reason || "not_found" }, 404);
+        }
+        return json(request, { ok: true, card_id: cardId });
+      }
+
+      const tencardDelete = url.pathname.match(/^\/api\/admin\/tencards\/([^/]+)\/delete$/);
+      if (tencardDelete && request.method === "POST") {
+        const cardId = decodeURIComponent(tencardDelete[1] || "");
+        if (!cardId) return json(request, { ok: false, error: "card_id required" }, 400);
+        const result = await deleteTencard(env.DB, cardId);
+        if (!result.deleted) {
+          return json(request, { ok: false, error: result.reason || "not_found" }, 404);
+        }
+        return json(request, { ok: true, card_id: cardId });
       }
 
       if (url.pathname.startsWith("/api/admin/tencards/") && request.method === "GET") {

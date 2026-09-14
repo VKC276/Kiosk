@@ -14,6 +14,13 @@ export function d1CardStore(db: D1Database): CardStore {
     },
 
     async clipTencard(cardId: string) {
+      const existing = await db
+        .prepare(`SELECT kind, remaining FROM cards WHERE card_id = ?`)
+        .bind(cardId)
+        .first<{ kind: string; remaining: number | null }>();
+      if (!existing || existing.kind !== "tencard") return "missing";
+      if (!(Number(existing.remaining) > 0)) return "exhausted";
+
       const row = await db
         .prepare(
           `UPDATE cards

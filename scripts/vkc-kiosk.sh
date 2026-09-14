@@ -21,7 +21,8 @@ Drift
 
 Kod & config
   pull                git pull (behåller config.json; stashar bara tracked)
-  update              pull + pip + ominstallation/restart
+  update              pull + pip + ominstallation/restart (SKIP_READER)
+  switch-cloudflare   Byt från Flask/GAS till Cloudflare, behåll läsarconfig
   config              Öppna config.json i \$EDITOR
   save-config         Spegla nuvarande config.json → ~/.config/vkc-kiosk/
   restore-config      Återställ config.json från ~/.config/vkc-kiosk/
@@ -208,7 +209,7 @@ cmd_update() {
   sudo cp "${ROOT_DIR}/deploy/99-vkc-kiosk-input.rules" /etc/udev/rules.d/ 2>/dev/null || true
   # Rendera om units om install.sh finns
   if [[ -x "${ROOT_DIR}/install.sh" ]]; then
-    sudo SKIP_APT=1 "${ROOT_DIR}/install.sh"
+    sudo SKIP_APT=1 SKIP_READER=1 "${ROOT_DIR}/install.sh"
   else
     sudo systemctl restart "${SERVICE_API}"
   fi
@@ -224,7 +225,8 @@ cmd_devices() {
   if [[ "$(urls_py mode)" == "local" ]]; then
     curl -fsS "http://127.0.0.1:$(urls_py port)/api/input-devices" || true
     echo
-  fi}
+  fi
+}
 
 python_bin() {
   if [[ -x "${ROOT_DIR}/venv/bin/python" ]]; then
@@ -236,6 +238,15 @@ python_bin() {
 
 cmd_setup_reader() {
   sudo "${ROOT_DIR}/scripts/setup-yarogntec-reader.sh"
+}
+
+cmd_switch_cloudflare() {
+  exec sudo \
+    KIOSK_TOKEN="${KIOSK_TOKEN:-}" \
+    API_URL="${API_URL:-}" \
+    KIOSK_URL="${KIOSK_URL:-}" \
+    KIOSK_BRANCH="${KIOSK_BRANCH:-}" \
+    "${ROOT_DIR}/scripts/switch-to-cloudflare.sh"
 }
 
 cmd_configure_reader() {
@@ -264,6 +275,7 @@ main() {
     restore-config) cmd_restore_config ;;
     url)     urls_py browser ;;
     setup-reader) cmd_setup_reader ;;
+    switch-cloudflare) cmd_switch_cloudflare ;;
     configure-reader) cmd_configure_reader "$@" ;;
     slides|karusell) cmd_slides "$@" ;;
     -h|--help|help|"") usage ;;

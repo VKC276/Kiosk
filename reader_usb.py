@@ -66,7 +66,13 @@ def _authorize_device(vendor_id: int, product_id: int) -> bool:
     return False
 
 
-def usb_card_reader_thread(vendor_id: int, product_id: int, on_raw_id, should_run=lambda: True):
+def usb_card_reader_thread(
+    vendor_id: int,
+    product_id: int,
+    on_raw_id,
+    should_run=lambda: True,
+    on_start_read=None,
+):
     """Lyssna på USB-HID iface 0. on_raw_id(str) anropas vid komplett blipp."""
     try:
         import usb.core
@@ -142,6 +148,11 @@ def usb_card_reader_thread(vendor_id: int, product_id: int, on_raw_id, should_ru
 
                 for code in pressed:
                     if code in HID_KEYMAP:
+                        if not reading and on_start_read:
+                            try:
+                                on_start_read()
+                            except Exception as exc:
+                                print(f"USB: Fel i on_start_read: {exc}")
                         reading = True
                         buf.append(HID_KEYMAP[code])
                     elif code in HID_ENTER:

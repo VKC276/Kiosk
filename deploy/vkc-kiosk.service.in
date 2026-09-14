@@ -1,5 +1,5 @@
 [Unit]
-Description=VKC Kiosk API (kortläsare + webb)
+Description=VKC Kiosk (kortläsare mot Cloudflare, eller lokal Flask)
 Documentation=https://github.com/VKC276/Kiosk
 Requires=network-online.target
 After=network-online.target
@@ -13,21 +13,11 @@ Group=__KIOSK_USER__
 WorkingDirectory=__KIOSK_DIR__
 Environment=PATH=__KIOSK_DIR__/venv/bin:/usr/local/bin:/usr/bin
 ExecStartPre=/usr/bin/sleep 3
-# gthread (inte gevent): PyUSB/libusb i bakgrundstråd kan annars blockera hela
-# gevent-hubben så /healthz hänger och Chromium aldrig startar.
-ExecStart=__KIOSK_DIR__/venv/bin/gunicorn \
-  -w 1 \
-  -k gthread \
-  --threads 4 \
-  --timeout 0 \
-  -b __SERVER_HOST__:__SERVER_PORT__ \
-  wsgi:app
+ExecStart=__KIOSK_DIR__/scripts/start-kiosk-backend.sh
 Restart=always
 RestartSec=3
 StandardOutput=journal
 StandardError=journal
-
-# Ge tillgång till /dev/input (kräver även membership i gruppen input)
 SupplementaryGroups=input
 
 [Install]

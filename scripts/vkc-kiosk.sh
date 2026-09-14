@@ -11,17 +11,18 @@ usage() {
 Användning: vkc-kiosk <kommando>
 
 Drift
-  status              Tjänstestatus + /healthz
-  start               Starta API
-  stop                Stoppa browser + API
-  restart             Starta om API (+ browser) och visa status
+  status              Tjänstestatus + healthz (Cloudflare eller lokal)
+  start               Starta kortläsar-agent / lokal API
+  stop                Stoppa browser + agent
+  restart             Starta om agent (+ browser) och visa status
   logs                Följ journal-loggar
   devices             Lista input-/USB-läsare
-  url                 Skriv ut lokal kiosk-URL
+  url                 Skriv ut kiosk-URL (Cloudflare eller lokal)
 
 Kod & config
   pull                git pull (behåller config.json; stashar bara tracked)
-  update              pull + pip + ominstallation/restart
+  update              pull + pip + ominstallation/restart (SKIP_READER)
+  switch-cloudflare   Byt från Flask/GAS till Cloudflare, behåll läsarconfig
   config              Öppna config.json i \$EDITOR
   save-config         Spegla nuvarande config.json → ~/.config/vkc-kiosk/
   restore-config      Återställ config.json från ~/.config/vkc-kiosk/
@@ -35,13 +36,12 @@ Dokumentation: INSTALLATION.md och README.md i git-repot.
 EOF
 }
 
-port() {
-  python3 - <<PY
-import json
-from pathlib import Path
-cfg = json.loads(Path("${ROOT_DIR}/config.json").read_text(encoding="utf-8"))
-print(int((cfg.get("SERVER") or {}).get("port", 8081)))
-PY
+urls_py() {
+  if [[ -x "${ROOT_DIR}/venv/bin/python" ]]; then
+    "${ROOT_DIR}/venv/bin/python" "${ROOT_DIR}/scripts/kiosk-urls.py" "$@"
+  else
+    python3 "${ROOT_DIR}/scripts/kiosk-urls.py" "$@"
+  fi
 }
 
 cmd_status() {
@@ -50,7 +50,9 @@ cmd_status() {
     systemctl --no-pager --full status "${SERVICE_BROWSER}" || true
   fi
   echo
-  curl -fsS "http://127.0.0.1:$(port)/healthz" && echo
+  urls_py all
+  echo
+  curl -fsS "$(urls_py health)" && echo
 }
 
 cmd_restart() {
@@ -207,7 +209,7 @@ cmd_update() {
   sudo cp "${ROOT_DIR}/deploy/99-vkc-kiosk-input.rules" /etc/udev/rules.d/ 2>/dev/null || true
   # Rendera om units om install.sh finns
   if [[ -x "${ROOT_DIR}/install.sh" ]]; then
-    sudo SKIP_APT=1 "${ROOT_DIR}/install.sh"
+    sudo SKIP_APT=1 SKIP_READER=1 "${ROOT_DIR}/install.sh"
   else
     sudo systemctl restart "${SERVICE_API}"
   fi
@@ -220,8 +222,10 @@ cmd_devices() {
     python3 "${ROOT_DIR}/scripts/list_input_devices.py"
   fi
   echo
-  curl -fsS "http://127.0.0.1:$(port)/api/input-devices" || true
-  echo
+  if [[ "$(urls_py mode)" == "local" ]]; then
+    curl -fsS "http://127.0.0.1:$(urls_py port)/api/input-devices" || true
+    echo
+  fi
 }
 
 python_bin() {
@@ -234,6 +238,15 @@ python_bin() {
 
 cmd_setup_reader() {
   sudo "${ROOT_DIR}/scripts/setup-yarogntec-reader.sh"
+}
+
+cmd_switch_cloudflare() {
+  exec sudo \
+    KIOSK_TOKEN="${KIOSK_TOKEN:-}" \
+    API_URL="${API_URL:-}" \
+    KIOSK_URL="${KIOSK_URL:-}" \
+    KIOSK_BRANCH="${KIOSK_BRANCH:-}" \
+    "${ROOT_DIR}/scripts/switch-to-cloudflare.sh"
 }
 
 cmd_configure_reader() {
@@ -260,8 +273,9 @@ main() {
     config)  "${EDITOR:-nano}" "${ROOT_DIR}/config.json" ;;
     save-config) cmd_save_config ;;
     restore-config) cmd_restore_config ;;
-    url)     echo "http://127.0.0.1:$(port)/" ;;
+    url)     urls_py browser ;;
     setup-reader) cmd_setup_reader ;;
+    switch-cloudflare) cmd_switch_cloudflare ;;
     configure-reader) cmd_configure_reader "$@" ;;
     slides|karusell) cmd_slides "$@" ;;
     -h|--help|help|"") usage ;;

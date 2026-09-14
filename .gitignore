@@ -4,6 +4,13 @@ __pycache__/
 .env
 *.log
 .DS_Store
+node_modules/
+.wrangler/
+.dev.vars
+**/.dev.vars
+cloudflare/.wrangler/
+cloudflare/node_modules/
+cloudflare/import-tencards.sql
 
 # Lokal driftconfig — får aldrig skrivas över av git pull
 config.json

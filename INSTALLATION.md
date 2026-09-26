@@ -379,8 +379,11 @@ Importera om listan saknas (xlsx eller engångs-GAS-URL:er — se cloudflare/REA
 
 **Blå status hänger kvar (“Läser kort…”)**
 
-- Kolla `vkc-kiosk logs` efter `CF FEL` / `CF NÄTVERKSFEL` utan efterföljande `CF OK`
-- Starta om: `vkc-kiosk restart` (nollställer WebSocket + agent)
+UI har timeout (~12 s) och ignorerar sen `reading` efter status. Agenten pushar felstatus via `/api/checkin/ui` om checkin misslyckas.
+
+- Kolla `vkc-kiosk logs` efter `CF FEL` / `CF NÄTVERKSFEL`
+- Om Workern inte är deployad med `/api/checkin/ui`: `cd cloudflare && npx wrangler deploy`
+- Starta om: `vkc-kiosk restart`
 
 **Tom/vit skärm**
 

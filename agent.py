@@ -183,6 +183,37 @@ def notify_reading():
     ).start()
 
 
+def notify_ui_status(
+    message: str,
+    *,
+    secondary: str = "",
+    card_id: str = "",
+    status: str = "CHECKIN_ERROR",
+    status_color: str = "orange",
+    color_code: str = "#FF9800",
+) -> None:
+    """Pusha fel/clear till skärmen så den inte stannar på blå 'Läser kort…'."""
+    payload = {
+        "kiosk_id": CF_KIOSK_ID,
+        "type": "status",
+        "status": {
+            "type": "UNKNOWN",
+            "status": status,
+            "message": message,
+            "secondary_message": secondary,
+            "status_color": status_color,
+            "color_code": color_code,
+            "card_number_dec": card_id,
+            "member_name": "",
+        },
+    }
+    threading.Thread(
+        target=post_json,
+        args=("/api/checkin/ui", payload),
+        daemon=True,
+    ).start()
+
+
 def process_raw_card_id(raw_id: str) -> None:
     print(
         f"KORT RÅDATA: {raw_id!r} (len={len(raw_id)}) "
@@ -197,6 +228,12 @@ def process_raw_card_id(raw_id: str) -> None:
     )
     if not is_valid:
         print(f"VARNING: Ogiltigt kort-ID efter konvertering: {processed_id!r}")
+        notify_ui_status(
+            "Fel: Ogiltigt kort-ID.",
+            secondary=f"Rå: {raw_id!r} → {processed_id!r}",
+            card_id=processed_id if processed_id.isdigit() else "",
+            status="INVALID_FORMAT",
+        )
         return
 
     result = post_json(
@@ -209,6 +246,15 @@ def process_raw_card_id(raw_id: str) -> None:
             f"CF OK: {status.get('status')} — {status.get('message')} "
             f"({status.get('card_number_dec')})"
         )
+        return
+
+    # Checkin misslyckades efter att reading redan målat blått — lämna inte UI där.
+    print(f"CF: Checkin misslyckades för {processed_id!r} — skickar felstatus till UI.")
+    notify_ui_status(
+        "Kunde inte kontakta servern.",
+        secondary="Försök igen om en stund.",
+        card_id=processed_id,
+    )
 
 
 def parse_card_id(key_events):

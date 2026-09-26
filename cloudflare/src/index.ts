@@ -1,6 +1,6 @@
 import { requireToken } from "./auth";
 import { jsonWithCors, preflight } from "./cors";
-import { performCheckin } from "./checkin";
+import { checkinErrorStatus, performCheckin } from "./checkin";
 import { d1CardStore } from "./d1-store";
 import {
   deleteTencard,
@@ -11,7 +11,7 @@ import {
   upsertMembers,
   upsertTencards,
 } from "./import";
-import { KioskHub } from "./kiosk-hub";
+import { KioskHub, type HubEvent } from "./kiosk-hub";
 import type { CheckinStatus, KioskConfig } from "./types";
 
 export { KioskHub };
@@ -95,6 +95,45 @@ export default {
         const id = kioskIdFrom(url, env, body as { kiosk_id?: string });
         await (await hub(env, id)).broadcast({ type: "reading" });
         return json(request, { ok: true });
+      }
+
+      // Agenten kan pusha UI-status/clear utan D1 (t.ex. nätfel efter "Läser kort…").
+      if (url.pathname === "/api/checkin/ui" && request.method === "POST") {
+        const denied = requireToken(request, env.KIOSK_TOKEN, "KIOSK_TOKEN");
+        if (denied) return denied;
+        const body = await readJsonBody(request);
+        const id = kioskIdFrom(url, env, body as { kiosk_id?: string });
+        const eventType = String(body.type || body.event || "status");
+        if (eventType === "clear") {
+          await (await hub(env, id)).broadcast({ type: "clear" });
+          return json(request, { ok: true });
+        }
+        if (eventType === "reading") {
+          await (await hub(env, id)).broadcast({ type: "reading" });
+          return json(request, { ok: true });
+        }
+        const rawStatus = (body.status || body.data) as Partial<CheckinStatus> | undefined;
+        const status: CheckinStatus =
+          rawStatus && typeof rawStatus === "object" && rawStatus.message
+            ? {
+                type: String(rawStatus.type || "UNKNOWN"),
+                status: String(rawStatus.status || "CHECKIN_ERROR"),
+                message: String(rawStatus.message),
+                secondary_message: String(rawStatus.secondary_message || ""),
+                status_color: String(rawStatus.status_color || "orange"),
+                color_code: String(rawStatus.color_code || "#FF9800"),
+                card_number_dec: String(rawStatus.card_number_dec || ""),
+                member_name: String(rawStatus.member_name || ""),
+                expiry_date: rawStatus.expiry_date != null ? String(rawStatus.expiry_date) : "",
+              }
+            : checkinErrorStatus(
+                String(body.message || "Kunde inte kontakta servern."),
+                String(body.secondary_message || "Försök igen om en stund."),
+                String(body.card_id || body.cardId || ""),
+              );
+        const event: HubEvent = { type: "status", data: status };
+        await (await hub(env, id)).broadcast(event);
+        return json(request, { ok: true, status });
       }
 
       if (

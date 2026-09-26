@@ -109,6 +109,25 @@ export function notFoundStatus(cardId: string): CheckinStatus {
   };
 }
 
+/** Status när Pi-agenten inte fick svar från Workern (eller ogiltigt ID). */
+export function checkinErrorStatus(
+  message: string,
+  secondaryMessage = "",
+  cardId = "",
+): CheckinStatus {
+  return {
+    type: "UNKNOWN",
+    status: "CHECKIN_ERROR",
+    message,
+    secondary_message: secondaryMessage,
+    status_color: "orange",
+    color_code: "#FF9800",
+    card_number_dec: cardId,
+    member_name: "",
+    expiry_date: "",
+  };
+}
+
 export function clipSuccessStatus(
   cardId: string,
   remaining: number,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkinErrorStatus,
   clipSuccessStatus,
   displayName,
   mapMemberStatus,
@@ -172,5 +173,14 @@ describe("tencardStatus", () => {
       remaining: 4,
     });
     expect(status.secondary_message).toBe("");
+  });
+});
+
+describe("checkinErrorStatus", () => {
+  it("builds orange UI status for agent failures", () => {
+    const status = checkinErrorStatus("Kunde inte kontakta servern.", "Försök igen.", "123");
+    expect(status.status).toBe("CHECKIN_ERROR");
+    expect(status.status_color).toBe("orange");
+    expect(status.card_number_dec).toBe("123");
   });
 });

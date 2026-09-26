@@ -18,12 +18,14 @@ ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do [[ -d /run/user/__KIOSK_UID_
 ExecStartPre=/bin/bash -c 'PY=__KIOSK_DIR__/venv/bin/python; [[ -x "$PY" ]] || PY=python3; for i in $(seq 1 90); do HEALTH=$("$PY" __KIOSK_DIR__/scripts/kiosk-urls.py health); curl -fsS --max-time 2 "$HEALTH" >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
 ExecStart=__KIOSK_DIR__/deploy/start-browser.sh
 # Stoppa Chromium-profilen vid restart/stop så nästa start inte exit:ar tomt.
-ExecStop=/bin/bash -c 'pkill -f -- "--user-data-dir=/home/__KIOSK_USER__/.config/vkc-kiosk-chromium" || true'
+ExecStop=/bin/bash -c 'pkill -f -- "--user-data-dir=/home/__KIOSK_USER__/.config/vkc-kiosk-chromium" || true; sleep 0.5; pkill -9 -f -- "--user-data-dir=/home/__KIOSK_USER__/.config/vkc-kiosk-chromium" || true'
 # Inte Restart=always — Chromium kan lämna processer kvar; always öppnar då nya flikar i loop.
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=120
-KillMode=control-group
+# Chromium kan annars hålla kvar shutdown i ~90 s (systemd default).
+TimeoutStopSec=8
+KillMode=mixed
 StandardOutput=journal
 StandardError=journal
 

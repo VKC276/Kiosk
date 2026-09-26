@@ -9,6 +9,8 @@ ExecStart=__KIOSK_DIR__/deploy/usb-reader-iface1-guard.sh
 Restart=always
 RestartSec=1
 Nice=-5
+TimeoutStopSec=5
+KillMode=mixed
 StandardOutput=journal
 StandardError=journal
 

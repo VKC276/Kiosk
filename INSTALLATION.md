@@ -425,6 +425,8 @@ Använd **alltid** `vkc-kiosk pull`. Efter manuell edit: `vkc-kiosk save-config`
 
 **WallFlow-färg (`#blå` m.m.) fel sida** → uppdatera kod (`vkc-kiosk pull`) och hårdstarta browser.
 
+**Långsam avstängning (power off)** — ofta systemd som väntar på kiosk/Chromium (~90 s default). Units har `TimeoutStopSec=8`. Efter `vkc-kiosk pull` + ominstallation/`systemctl daemon-reload` + restart gäller det. Diagnos: `journalctl -b -1 | grep -E 'Timed out|Stopping|vkc-kiosk'`.
+
 **Pi Connect** — fullskärm (`--start-fullscreen`), lämna med F11 / Alt+Tab.
 
 **Hög CPU** — normalt med Chromium + flera iframes. Längre `reloadIntervalSeconds` sänker lasten. Temp ~70 °C under last är ofta OK; oro runt ~80–85 °C.

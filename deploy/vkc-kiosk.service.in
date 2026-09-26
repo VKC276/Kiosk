@@ -16,6 +16,12 @@ ExecStartPre=/usr/bin/sleep 3
 ExecStart=__KIOSK_DIR__/scripts/start-kiosk-backend.sh
 Restart=always
 RestartSec=3
+# Snabb power-off: default TimeoutStopSec (~90 s) gjorde avstängning seg
+# när läsartråd/HTTP hängde. Efter timeout → SIGKILL.
+TimeoutStopSec=8
+KillMode=mixed
+KillSignal=SIGTERM
+FinalKillSignal=SIGKILL
 StandardOutput=journal
 StandardError=journal
 SupplementaryGroups=input

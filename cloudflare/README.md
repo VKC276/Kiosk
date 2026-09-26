@@ -103,7 +103,7 @@ curl -sS -X POST http://127.0.0.1:8787/api/checkin \
 | GET | `/api/kiosk/ws?kiosk=` | nej | WebSocket till skärmen |
 | POST | `/api/checkin/reading` | KIOSK | blå "Läser kort…" (ingen D1) |
 | POST | `/api/checkin/ui` | KIOSK | pusha `status`/`clear` till skärmen (ingen D1; används vid nätfel) |
-| POST | `/api/clip` eller `/api/checkin` | KIOSK | klipp; svar `{ remaining, exhausted, status }` |
+| POST | `/api/clip` eller `/api/checkin` | KIOSK | klipp; svar `{ remaining, exhausted, status }`. Samma 10-kort inom ~30 s = replay (inga dubbelklipp) |
 | GET | `/api/admin/tencards` | ADMIN | lista 10-kort (WallFlow) |
 | POST | `/api/admin/tencards` | ADMIN | skapa/uppdatera saldo (WallFlow) |
 | POST | `/api/admin/import/members` | ADMIN | JSON-lista med medlemskort |

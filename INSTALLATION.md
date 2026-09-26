@@ -385,6 +385,10 @@ UI har timeout (~12 s) och ignorerar sen `reading` efter status. Agenten pushar 
 - Om Workern inte är deployad med `/api/checkin/ui`: `cd cloudflare && npx wrangler deploy`
 - Starta om: `vkc-kiosk restart`
 
+**”Prova igen” efter timeout — dubbelklipp?**
+
+Nej. Workern debounce:ar samma 10-kort i ~30 s (`last_clipped_at`). Om första anropet hann klippa men svaret tappades, visar en ny blipp samma saldo utan ny decrement.
+
 **Tom/vit skärm**
 
 ```bash

@@ -9,15 +9,22 @@ import {
   performCheckin,
   tencardStatus,
 } from "../src/checkin";
+import { CLIP_DEBOUNCE_SECONDS, isRecentlyClipped } from "../src/clip-policy";
 import type { CardRow, CardStore, MemberRow, TencardRow } from "../src/types";
 import { memberFromGas, tencardFromGas } from "../src/import";
+
+function utcNowSql(): string {
+  return new Date().toISOString().replace("T", " ").slice(0, 19);
+}
 
 function memoryStore(opts: {
   members?: MemberRow[];
   tencards?: TencardRow[];
 }): CardStore {
   const members = new Map((opts.members || []).map((m) => [m.card_id, { ...m }]));
-  const tencards = new Map((opts.tencards || []).map((t) => [t.card_id, { ...t }]));
+  const tencards = new Map(
+    (opts.tencards || []).map((t) => [t.card_id, { ...t, last_clipped_at: t.last_clipped_at ?? null }]),
+  );
   return {
     async getCard(id): Promise<CardRow | null> {
       const tencard = tencards.get(id);
@@ -29,6 +36,7 @@ function memoryStore(opts: {
           status: "",
           expires_at: null,
           remaining: tencard.remaining,
+          last_clipped_at: tencard.last_clipped_at ?? null,
         };
       }
       const member = members.get(id);
@@ -44,11 +52,15 @@ function memoryStore(opts: {
       }
       return null;
     },
-    async clipTencard(id) {
+    async clipTencard(id, debounceSeconds = CLIP_DEBOUNCE_SECONDS) {
       const row = tencards.get(id);
       if (!row) return "missing";
       if (row.remaining <= 0) return "exhausted";
+      if (isRecentlyClipped(row.last_clipped_at, debounceSeconds)) {
+        return { remaining: row.remaining, name: row.name, replay: true };
+      }
       row.remaining -= 1;
+      row.last_clipped_at = utcNowSql();
       return { remaining: row.remaining, name: row.name };
     },
   };
@@ -182,5 +194,30 @@ describe("checkinErrorStatus", () => {
     expect(status.status).toBe("CHECKIN_ERROR");
     expect(status.status_color).toBe("orange");
     expect(status.card_number_dec).toBe("123");
+  });
+});
+
+describe("clip debounce", () => {
+  it("treats a second swipe within the window as replay, not a new clip", async () => {
+    const store = memoryStore({
+      tencards: [{ card_id: "111", name: "Anna", remaining: 5 }],
+    });
+    const first = await performCheckin(store, "111", "reception");
+    expect(first.status).toBe("TENCARD_CLIPPED_OK");
+    expect(first.message).toContain("4 klipp kvar");
+
+    const second = await performCheckin(store, "111", "reception");
+    expect(second.status).toBe("TENCARD_CLIPPED_OK");
+    expect(second.message).toContain("4 klipp kvar");
+
+    const card = await store.getCard("111");
+    expect(card?.remaining).toBe(4);
+  });
+
+  it("isRecentlyClipped respects the debounce window", () => {
+    const now = Date.parse("2026-09-26T12:00:00Z");
+    expect(isRecentlyClipped("2026-09-26 11:59:40", 30, now)).toBe(true);
+    expect(isRecentlyClipped("2026-09-26 11:59:00", 30, now)).toBe(false);
+    expect(isRecentlyClipped(null, 30, now)).toBe(false);
   });
 });

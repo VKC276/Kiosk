@@ -1,3 +1,4 @@
+import { CLIP_DEBOUNCE_SECONDS } from "./clip-policy";
 import type { CardStore, CheckinStatus, MemberRow, TencardRow } from "./types";
 
 const ANON_NAME_RE = /klippkort|användare|anvandare|^unknown$|^n\/a$/i;
@@ -193,7 +194,7 @@ export async function performCheckin(
       return status;
     }
 
-    const clip = await store.clipTencard(cardId);
+    const clip = await store.clipTencard(cardId, CLIP_DEBOUNCE_SECONDS);
     if (clip === "missing" || clip === "exhausted") {
       const status = tencardStatus({ card_id: card.card_id, name: card.name, remaining: 0 });
       status.status = "TENCARD_CLIP_FAIL_EXHAUSTED";
@@ -203,7 +204,16 @@ export async function performCheckin(
     }
 
     const status = clipSuccessStatus(cardId, clip.remaining, clip.name);
-    console.log(JSON.stringify({ event: "checkin", kioskId, cardId, status: status.status, remaining: clip.remaining }));
+    console.log(
+      JSON.stringify({
+        event: "checkin",
+        kioskId,
+        cardId,
+        status: status.status,
+        remaining: clip.remaining,
+        replay: Boolean(clip.replay),
+      }),
+    );
     return status;
   }
 

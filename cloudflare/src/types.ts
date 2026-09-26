@@ -47,7 +47,16 @@ export type CardRow = {
   last_clipped_at?: string | null;
 };
 
+export type ClipResult =
+  | { remaining: number; name: string; replay?: boolean }
+  | "exhausted"
+  | "missing";
+
 export type CardStore = {
   getCard(cardId: string): Promise<CardRow | null>;
-  clipTencard(cardId: string): Promise<{ remaining: number; name: string } | "exhausted" | "missing">;
+  /**
+   * Atomiskt klipp. Om samma kort klippts inom debounce-fönstret returneras
+   * nuvarande saldo med replay=true (inga extra decrement) — säkert vid timeout+retry.
+   */
+  clipTencard(cardId: string, debounceSeconds?: number): Promise<ClipResult>;
 };

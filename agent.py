@@ -249,10 +249,11 @@ def process_raw_card_id(raw_id: str) -> None:
         return
 
     # Checkin misslyckades efter att reading redan målat blått — lämna inte UI där.
+    # Retry är säkert: Worker debounce:ar samma 10-kort inom ~30 s (inga dubbelklipp).
     print(f"CF: Checkin misslyckades för {processed_id!r} — skickar felstatus till UI.")
     notify_ui_status(
-        "Kunde inte kontakta servern.",
-        secondary="Försök igen om en stund.",
+        "Det gick inte att klippa ditt kort.",
+        secondary="Prova igen.",
         card_id=processed_id,
     )
 

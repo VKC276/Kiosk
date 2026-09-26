@@ -11,18 +11,18 @@ usage() {
 Användning: vkc-kiosk <kommando>
 
 Drift
-  status              Tjänstestatus + healthz (Cloudflare eller lokal)
-  start               Starta kortläsar-agent / lokal API
+  status              Tjänstestatus + Worker-healthz
+  start               Starta kortläsar-agent
   stop                Stoppa browser + agent
   restart             Starta om agent (+ browser) och visa status
   logs                Följ journal-loggar
   devices             Lista input-/USB-läsare
-  url                 Skriv ut kiosk-URL (Cloudflare eller lokal)
+  url                 Skriv ut kiosk-URL (Worker)
 
 Kod & config
   pull                git pull (behåller config.json; stashar bara tracked)
   update              pull + pip + ominstallation/restart (SKIP_READER)
-  switch-cloudflare   Byt från Flask/GAS till Cloudflare, behåll läsarconfig
+  switch-cloudflare   Migrera äldre Flask/GAS-Pi till Cloudflare (behåller läsarconfig)
   config              Öppna config.json i \$EDITOR
   save-config         Spegla nuvarande config.json → ~/.config/vkc-kiosk/
   restore-config      Återställ config.json från ~/.config/vkc-kiosk/
@@ -220,11 +220,6 @@ cmd_devices() {
     "${ROOT_DIR}/venv/bin/python" "${ROOT_DIR}/scripts/list_input_devices.py"
   else
     python3 "${ROOT_DIR}/scripts/list_input_devices.py"
-  fi
-  echo
-  if [[ "$(urls_py mode)" == "local" ]]; then
-    curl -fsS "http://127.0.0.1:$(urls_py port)/api/input-devices" || true
-    echo
   fi
 }
 

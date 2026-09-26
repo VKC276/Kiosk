@@ -62,17 +62,19 @@ node scripts/import-from-xlsx.mjs "..\sökväg\Förteckning 10-kort.xlsx" `
   --admin-token "DIN_ADMIN_TOKEN"
 ```
 
-## Importera från Google Apps Script
+## Engångsimport från gamla GAS-URL:er
 
-På en dator med de gamla GAS-URL:erna (kan vara Pi:n):
+Om du fortfarande har URL:er till gamla JSON-listor:
 
 ```bash
 ./venv/bin/python scripts/import-from-gas.py \
   --api-url https://vkc-kiosk.<ditt-konto>.workers.dev \
-  --admin-token "$ADMIN_TOKEN"
+  --admin-token "$ADMIN_TOKEN" \
+  --members-url 'https://…' \
+  --tencards-url 'https://…'
 ```
 
-Scriptet läser `DATA_URL` och `TEN_VISIT_DATA_URL` från `config.json` om de finns.
+Föredra xlsx-import ovan för löpande drift.
 
 ## Lokalt
 
@@ -103,8 +105,8 @@ curl -sS -X POST http://127.0.0.1:8787/api/checkin \
 | POST | `/api/clip` eller `/api/checkin` | KIOSK | klipp; svar `{ remaining, exhausted, status }` |
 | GET | `/api/admin/tencards` | ADMIN | lista 10-kort (WallFlow) |
 | POST | `/api/admin/tencards` | ADMIN | skapa/uppdatera saldo (WallFlow) |
-| POST | `/api/admin/import/members` | ADMIN | GAS-format JSON-lista |
-| POST | `/api/admin/import/tencards` | ADMIN | GAS-format JSON-lista |
+| POST | `/api/admin/import/members` | ADMIN | JSON-lista med medlemskort |
+| POST | `/api/admin/import/tencards` | ADMIN | JSON-lista med 10-kort |
 | PUT | `/api/admin/kiosk/config` | ADMIN | karusell |
 | GET | `/api/admin/lookup/<id>` | ADMIN | felsök kort (1 rad) |
 | GET | `/api/admin/stats` | ADMIN | räknare i `meta` (2 rader) |
@@ -122,4 +124,4 @@ D1 tar betalt per **läst/skriven rad**, inte per kort i klubben. 50 kort i en t
 | Kiosk-sidan laddas | 1 (`kiosk_config`) | 0 |
 | Import om listan är oförändrad | ~0 extra writes (`WHERE` hoppar över lika rader) | |
 
-Incheckningar loggas med `console.log` (Workers-loggar), inte som extra D1-rader. Återimportera GAS bara när listan faktiskt ändrats.
+Incheckningar loggas med `console.log` (Workers-loggar), inte som extra D1-rader. Importera bara när listan faktiskt ändrats.

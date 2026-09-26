@@ -51,11 +51,13 @@ def post_import(api: str, token: str, path: str, rows: list) -> None:
 def main() -> int:
     cfg = load_config()
     cf = cfg.get("CLOUDFLARE") or {}
-    parser = argparse.ArgumentParser(description="Importera GAS-listor till Cloudflare Worker")
+    parser = argparse.ArgumentParser(
+        description="Engångsimport: gamla GAS-listor → Cloudflare D1 (kräver URL:er som argument)"
+    )
     parser.add_argument("--api-url", default=cf.get("apiUrl") or "")
     parser.add_argument("--admin-token", default=cf.get("adminToken") or "")
-    parser.add_argument("--members-url", default=cfg.get("DATA_URL") or "")
-    parser.add_argument("--tencards-url", default=cfg.get("TEN_VISIT_DATA_URL") or "")
+    parser.add_argument("--members-url", default="", help="URL till medlemslista (JSON-array)")
+    parser.add_argument("--tencards-url", default="", help="URL till 10-kortslista (JSON-array)")
     parser.add_argument("--timeout", type=int, default=45)
     args = parser.parse_args()
 
@@ -63,17 +65,21 @@ def main() -> int:
         print("Saknar --api-url och/eller --admin-token (eller CLOUDFLARE i config.json).", file=sys.stderr)
         return 1
 
+    if not args.members_url and not args.tencards_url:
+        print("Ange minst --members-url och/eller --tencards-url.", file=sys.stderr)
+        return 1
+
     if args.members_url:
         members = fetch_json(args.members_url, args.timeout)
         post_import(args.api_url, args.admin_token, "/api/admin/import/members", members)
     else:
-        print("Hoppar över medlemmar (ingen DATA_URL / --members-url).")
+        print("Hoppar över medlemmar (ingen --members-url).")
 
     if args.tencards_url:
         tencards = fetch_json(args.tencards_url, args.timeout)
         post_import(args.api_url, args.admin_token, "/api/admin/import/tencards", tencards)
     else:
-        print("Hoppar över 10-kort (ingen TEN_VISIT_DATA_URL / --tencards-url).")
+        print("Hoppar över 10-kort (ingen --tencards-url).")
 
     stats = requests.get(
         f"{args.api_url.rstrip('/')}/api/admin/stats",

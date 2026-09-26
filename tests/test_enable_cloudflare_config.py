@@ -18,6 +18,11 @@ class EnableCloudflareTests(unittest.TestCase):
             "CARD_PROCESSING": {"FORMAT": "HEX10", "BYTE_ORDER": "REVERSED"},
             "CLOUDFLARE": {"enabled": False, "token": ""},
             "DATA_URL": "https://script.google.com/macros/s/old/exec",
+            "LOG_URL": "https://script.google.com/macros/s/old/exec",
+            "TEN_VISIT_DATA_URL": "https://script.google.com/macros/s/old/exec",
+            "GAS_UPDATE_URL_BASE": "https://script.google.com/macros/s/old/exec",
+            "CACHE": {"updateIntervalSeconds": 1800},
+            "SERVER": {"host": "0.0.0.0", "port": 8081},
         }
         out = mod.merge_cloudflare(
             json.loads(json.dumps(cfg)),
@@ -29,7 +34,12 @@ class EnableCloudflareTests(unittest.TestCase):
         )
         self.assertEqual(out["READER"], cfg["READER"])
         self.assertEqual(out["CARD_PROCESSING"], cfg["CARD_PROCESSING"])
-        self.assertEqual(out["DATA_URL"], cfg["DATA_URL"])
+        self.assertNotIn("DATA_URL", out)
+        self.assertNotIn("LOG_URL", out)
+        self.assertNotIn("TEN_VISIT_DATA_URL", out)
+        self.assertNotIn("GAS_UPDATE_URL_BASE", out)
+        self.assertNotIn("CACHE", out)
+        self.assertNotIn("SERVER", out)
         self.assertTrue(out["CLOUDFLARE"]["enabled"])
         self.assertEqual(out["CLOUDFLARE"]["adminToken"], "")
         self.assertEqual(out["CLOUDFLARE"]["token"], "secret-token")

@@ -446,7 +446,7 @@ def main() -> int:
         save_config(cfg)
 
         print("\nKlart. Tips:")
-        print("  curl -s http://127.0.0.1:8081/api/cache/refresh")
+        print("  vkc-kiosk save-config")
         print("  vkc-kiosk restart")
         return 0
     finally:

@@ -52,6 +52,16 @@ def merge_cloudflare(
         cfg["READER"] = reader
     if isinstance(card, dict):
         cfg["CARD_PROCESSING"] = card
+    # Ta bort gamla GAS/Flask-nycklar om de finns kvar i config.
+    for obsolete in (
+        "DATA_URL",
+        "LOG_URL",
+        "TEN_VISIT_DATA_URL",
+        "GAS_UPDATE_URL_BASE",
+        "CACHE",
+        "SERVER",
+    ):
+        cfg.pop(obsolete, None)
     return cfg
 
 

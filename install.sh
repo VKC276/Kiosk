@@ -49,18 +49,6 @@ detect_user() {
   die "Kunde inte avgöra användare. Sätt KIOSK_USER=..."
 }
 
-read_server_bind() {
-  local cfg="$1"
-  python3 - <<PY
-import json
-from pathlib import Path
-cfg = json.loads(Path(${cfg@Q}).read_text(encoding="utf-8"))
-server = cfg.get("SERVER") or {}
-print(server.get("host", "0.0.0.0"))
-print(int(server.get("port", 8081)))
-PY
-}
-
 render_unit() {
   local src="$1"
   local dst="$2"
@@ -68,8 +56,6 @@ render_unit() {
     -e "s|__KIOSK_USER__|${KIOSK_USER}|g" \
     -e "s|__KIOSK_UID__|${KIOSK_UID}|g" \
     -e "s|__KIOSK_DIR__|${KIOSK_DIR}|g" \
-    -e "s|__SERVER_HOST__|${SERVER_HOST}|g" \
-    -e "s|__SERVER_PORT__|${SERVER_PORT}|g" \
     "${src}" > "${dst}"
 }
 
@@ -112,7 +98,7 @@ bootstrap_repo() {
     self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   fi
 
-  if [[ -n "${self_dir}" && -f "${self_dir}/app.py" && ( -f "${self_dir}/agent.py" || -f "${self_dir}/wsgi.py" ) ]]; then
+  if [[ -n "${self_dir}" && -f "${self_dir}/agent.py" ]]; then
     KIOSK_DIR="${KIOSK_DIR:-${self_dir}}"
     log "Använder befintlig kodkatalog: ${KIOSK_DIR}"
     # Om vi kör från en annan användares kopia, säkerställ ägarskap senare
@@ -169,7 +155,7 @@ ensure_config() {
   fi
 
   if [[ -f "${KIOSK_DIR}/config.example.json" ]]; then
-    log "Skapar config.json från config.example.json (fyll i Cloudflare eller GAS)"
+    log "Skapar config.json från config.example.json (fyll i CLOUDFLARE.token)"
     sudo -u "${KIOSK_USER}" cp -a "${KIOSK_DIR}/config.example.json" "${KIOSK_DIR}/config.json"
   else
     die "Saknar både config.json och config.example.json i ${KIOSK_DIR}"
@@ -222,9 +208,6 @@ EOF
 install_services() {
   log "Installerar systemd-tjänster"
 
-  mapfile -t BIND < <(read_server_bind "${KIOSK_DIR}/config.json")
-  SERVER_HOST="${BIND[0]}"
-  SERVER_PORT="${BIND[1]}"
   KIOSK_UID="$(id -u "${KIOSK_USER}")"
 
   render_unit "${KIOSK_DIR}/deploy/vkc-kiosk.service.in" /etc/systemd/system/vkc-kiosk.service
@@ -266,13 +249,13 @@ VKC Kiosk installerad
 
   Kod:      ${KIOSK_DIR}
   Användare:${KIOSK_USER}
-  Backend:  ${KIOSK_DIR}/scripts/start-kiosk-backend.sh
+  Backend:  agent.py → Cloudflare Worker
   Tjänster: vkc-kiosk.service$([ "${SKIP_BROWSER:-0}" = "1" ] || echo " + vkc-kiosk-browser.service")
 
-Nästa steg (befintlig Pi → Cloudflare, behåll läsare):
-  sudo KIOSK_TOKEN='...' ./scripts/switch-to-cloudflare.sh
-
-Lokal Flask/GAS (fallback): CLOUDFLARE.enabled=false — undvik om Workern är live.
+Nästa steg:
+  1. Fyll CLOUDFLARE.token i config.json (samma som wrangler secret KIOSK_TOKEN)
+  2. vkc-kiosk save-config && vkc-kiosk restart
+  3. Befintlig Pi från äldre Flask/GAS: sudo KIOSK_TOKEN='...' ./scripts/switch-to-cloudflare.sh
 ────────────────────────────────────────────────────────
 EOF
 }

@@ -4,8 +4,7 @@ Lokal kiosk + MIFARE-incheckning för Västerviks klättercenter (Raspberry Pi).
 
 - **Övre ytan:** timer-styrd karusell (iframes / WallFlow / RSS)
 - **Nedre ytan:** kortincheckning (medlem + 10-kort)
-- **Cloudflare (rekommenderat):** Pi skickar bara det blippade kortnumret till Workern. Ingen lokal kortlista — kiosken behöver internet ändå (Pages/WallFlow).
-- **Fallback:** Flask med nedladdad GAS-cache om `CLOUDFLARE.enabled` är `false`
+- **Cloudflare:** Pi skickar bara det blippade kortnumret till Workern. Ingen lokal kortlista — kiosken behöver internet ändå (Pages/WallFlow).
 
 Full guide: **[INSTALLATION.md](INSTALLATION.md)** · Worker: **[cloudflare/README.md](cloudflare/README.md)**
 
@@ -29,7 +28,7 @@ vkc-kiosk restart
 
 Övriga keyboard-wedge-läsare: bara `configure-reader` (ingen `setup-reader`).
 
-Befintlig Pi med fungerande läsare → Cloudflare (släcker Flask, behåller READER):
+Äldre Pi som fortfarande kör Flask/GAS → Cloudflare (släcker lokal webbserver, behåller READER):
 
 ```bash
 sudo KIOSK_TOKEN='samma-som-wrangler-secret' ./scripts/switch-to-cloudflare.sh
@@ -49,11 +48,11 @@ vkc-kiosk help
 | `devices` | Lista kortläsare |
 | `pull` | `git pull` med skydd av `config.json` |
 | `update` | `pull` + pip + ominstallation (`SKIP_READER`) |
-| `switch-cloudflare` | Flask/GAS → Cloudflare, behåller läsarconfig |
+| `switch-cloudflare` | Migrera äldre Flask/GAS-Pi, behåller läsarconfig |
 | `config` | Öppna `config.json` |
 | `save-config` | Spegla config → `~/.config/vkc-kiosk/` (**kör efter manuell edit**) |
 | `restore-config` | Återställ från `~/.config/vkc-kiosk/` |
-| `url` | Kiosk-URL (Cloudflare eller lokal) |
+| `url` | Kiosk-URL (Worker) |
 | `setup-reader` | YAROGNTEC systemfix (sudo + reboot) |
 | `configure-reader` | Läsare + kortformat → `config.json` |
 | `slides` | Karusell (alias: `karusell`; publicerar till Worker om `adminToken` finns) |
@@ -62,19 +61,21 @@ WiFi: skrivbordets nätverks-GUI + login-nyckelring (Seahorse) — **inte** `vkc
 
 ---
 
-## Arkitektur (Cloudflare)
+## Arkitektur
 
 ```
 USB-läsare → agent.py (Pi) --POST /api/checkin--> Worker + D1
 Chromium (Pi) --------------WebSocket-----------> samma Worker (kiosk-UI)
 ```
 
-Pi driver ingen kiosk-webbserver. `vkc-kiosk.service` startar `agent.py`. Chromium öppnar Worker-URL:en.
+Pi driver ingen lokal webbserver. `vkc-kiosk.service` startar `agent.py`. Chromium öppnar Worker-URL:en.
 
-Importera befintliga GAS-listor:
+Importera kortlistor (xlsx rekommenderas):
 
 ```bash
-./venv/bin/python scripts/import-from-gas.py
+cd cloudflare && node scripts/import-from-xlsx.mjs ../CurrentDataSet/10-kort.xlsx \
+  --api-url https://vkc-kiosk.<konto>.workers.dev \
+  --admin-token "$ADMIN_TOKEN"
 ```
 
 ---
@@ -86,10 +87,8 @@ Importera befintliga GAS-listor:
 | `/` | Hel kiosk (slides + incheckning) |
 | `/checkin.html` | Bara incheckning |
 | `/api/kiosk/ws` | Live-status till skärmen |
-| `/healthz` | Hälsokoll + antal kort |
+| `/healthz` | Hälsokoll |
 | `/api/checkin` | Blipp (kiosk-token) |
-
-Lokal Flask-API (`CLOUDFLARE.enabled=false`) finns kvar som tidigare: `/checkin`, `/stream`, `/api/cache/*`.
 
 ---
 
@@ -100,9 +99,9 @@ Lokal Flask-API (`CLOUDFLARE.enabled=false`) finns kvar som tidigare: `/checkin`
 - Efter ändring: `vkc-kiosk save-config`
 - Uppdatera kod: alltid `vkc-kiosk pull` (inte rå `git pull`)
 
-`CLOUDFLARE.enabled=true` kräver `apiUrl` + `token`. Utan det fortsätter Pi:n med lokal Flask/GAS.
+Kräver `CLOUDFLARE.apiUrl` + `CLOUDFLARE.token` (samma värde som Worker-secret `KIOSK_TOKEN`).
 
-Detaljer om `READER`, `CARD_PROCESSING`, `KIOSK.slides`, cache, timeouts, 10-kort och WiFi: [INSTALLATION.md](INSTALLATION.md).
+Detaljer: [INSTALLATION.md](INSTALLATION.md).
 
 ---
 
@@ -111,14 +110,13 @@ Detaljer om `READER`, `CARD_PROCESSING`, `KIOSK.slides`, cache, timeouts, 10-kor
 | Sökväg | Roll |
 |--------|------|
 | `agent.py` | Kortläsar-agent mot Cloudflare |
-| `app.py` / `wsgi.py` | Flask-fallback + Gunicorn |
 | `cloudflare/` | Worker, D1-migrationer, kiosk-UI |
 | `card_convert.py` | Kort-ID-konvertering (HEX/DEC, byte/nibble-order) |
 | `reader_usb.py` | PyUSB-backend (YAROGNTEC iface 0) |
 | `config.example.json` | Mall för lokal `config.json` |
-| `templates/` | Flask-UI (endast fallback) |
 | `scripts/vkc-kiosk.sh` | CLI (`vkc-kiosk`) |
-| `scripts/import-from-gas.py` | Flytta GAS-listor → D1 |
+| `scripts/import-from-xlsx.py` | Import xlsx → D1 |
+| `scripts/import-from-gas.py` | Engångsimport från gamla GAS-URL:er |
 | `deploy/` | systemd, udev, browser-start, USB-quirk |
 | `install.sh` / `uninstall.sh` | Installation |
 
@@ -129,13 +127,13 @@ Detaljer om `READER`, `CARD_PROCESSING`, `KIOSK.slides`, cache, timeouts, 10-kor
 ```bash
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
-cp config.example.json config.json   # fyll i Cloudflare eller GAS
+cp config.example.json config.json   # fyll i CLOUDFLARE.token
 cd cloudflare && npm install && npm test
 ```
 
 Worker: `cd cloudflare && npx wrangler dev`
 
-Lokal Flask-fallback: `./venv/bin/python wsgi.py`
+Agent (mot lokal Worker): `./venv/bin/python agent.py`
 
 ## Avinstallera
 

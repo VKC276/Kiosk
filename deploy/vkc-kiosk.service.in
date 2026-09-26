@@ -1,5 +1,5 @@
 [Unit]
-Description=VKC Kiosk (kortläsare mot Cloudflare, eller lokal Flask)
+Description=VKC Kiosk kortläsar-agent (Cloudflare)
 Documentation=https://github.com/VKC276/Kiosk
 Requires=network-online.target
 After=network-online.target

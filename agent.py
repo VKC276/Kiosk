@@ -1,7 +1,7 @@
 """Kiosk-agent: lyssnar på kortläsaren och klipper mot Cloudflare.
 
-Ingen lokal Flask-server. Chromium visar GitHub Pages (eller Worker-UI).
-Den här processen skickar blippade kort-ID:n till POST /api/checkin med KIOSK_TOKEN.
+Chromium visar Worker-UI (eller GitHub Pages). Den här processen skickar
+blippade kort-ID:n till POST /api/checkin med KIOSK_TOKEN.
 """
 
 from __future__ import annotations

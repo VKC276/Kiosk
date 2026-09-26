@@ -16,17 +16,11 @@
     "usbVendor": "0xffff",
     "usbProduct": "0x0035"
   },
-  "SERVER": {
-    "host": "0.0.0.0",
-    "port": 8081
-  },
   "TIMEOUTS": {
     "statusDisplaySeconds": 3,
     "lastClipOkSeconds": 3,
     "lastClipReturnSeconds": 5,
-    "logRequestSeconds": 5,
-    "clipRequestSeconds": 10,
-    "sseHeartbeatSeconds": 20
+    "clipRequestSeconds": 10
   },
   "CARD_PROCESSING": {
     "FORMAT": "HEX10",
@@ -37,14 +31,10 @@
     "maxIdLength": 10,
     "decimalPadLength": 10
   },
-  "DATA_URL": "https://script.google.com/macros/s/REPLACE_ME/exec",
-  "LOG_URL": "https://script.google.com/macros/s/REPLACE_ME/exec",
-  "TEN_VISIT_DATA_URL": "https://script.google.com/macros/s/REPLACE_ME/exec",
-  "GAS_UPDATE_URL_BASE": "https://script.google.com/macros/s/REPLACE_ME/exec",
   "KIOSK": {
     "checkin": {
       "enabled": true,
-      "path": "/checkin",
+      "path": "/checkin.html",
       "heightPercent": 20
     },
     "reloadOnShow": false,

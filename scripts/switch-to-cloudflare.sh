@@ -6,7 +6,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BRANCH_DEFAULT="cursor/cloudflare-kiosk-checkin-a077"
+BRANCH_DEFAULT="main"
 API_DEFAULT="https://vkc-kiosk.muddy-rice-38d4.workers.dev"
 
 log()  { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }

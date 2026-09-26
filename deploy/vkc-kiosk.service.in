@@ -20,8 +20,6 @@ RestartSec=3
 # när läsartråd/HTTP hängde. Efter timeout → SIGKILL.
 TimeoutStopSec=8
 KillMode=mixed
-KillSignal=SIGTERM
-FinalKillSignal=SIGKILL
 StandardOutput=journal
 StandardError=journal
 SupplementaryGroups=input

@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { CheckinStatus } from "./types";
 
 export type HubEvent =
-  | { type: "reading" }
+  | { type: "reading"; message?: string }
   | { type: "status"; data: CheckinStatus }
   | { type: "clear" };
 

@@ -175,10 +175,17 @@ def post_json(path: str, payload: dict) -> dict | None:
         return None
 
 
-def notify_reading():
+def notify_reading(message: str | None = None, *, wait: bool = False) -> None:
+    """Visa mellanstatus på skärmen. wait=True innan checkin så status inte hinner före."""
+    payload: dict = {"kiosk_id": CF_KIOSK_ID}
+    if message:
+        payload["message"] = message
+    if wait:
+        post_json("/api/checkin/reading", payload)
+        return
     threading.Thread(
         target=post_json,
-        args=("/api/checkin/reading", {"kiosk_id": CF_KIOSK_ID}),
+        args=("/api/checkin/reading", payload),
         daemon=True,
     ).start()
 
@@ -192,7 +199,7 @@ def notify_ui_status(
     status_color: str = "orange",
     color_code: str = "#FF9800",
 ) -> None:
-    """Pusha fel/clear till skärmen så den inte stannar på blå 'Läser kort…'."""
+    """Pusha fel/clear till skärmen så den inte stannar på blå väntestatus."""
     payload = {
         "kiosk_id": CF_KIOSK_ID,
         "type": "status",
@@ -236,6 +243,10 @@ def process_raw_card_id(raw_id: str) -> None:
         )
         return
 
+    # Synkront innan checkin: annars hinner slutstatus ofta före och användaren
+    # ser ingen mellanfeedback under nätverksväntan.
+    notify_reading("Kortet läst, kontrollerar status", wait=True)
+
     result = post_json(
         "/api/checkin",
         {"card_id": processed_id, "kiosk_id": CF_KIOSK_ID},
@@ -272,7 +283,7 @@ def usb_card_reader_thread_entry():
         product_id=READER_USB_PRODUCT,
         on_raw_id=process_raw_card_id,
         should_run=lambda: SHOULD_RUN,
-        on_start_read=notify_reading,
+        on_start_read=lambda: notify_reading("Läser kort…"),
     )
 
 
@@ -300,7 +311,7 @@ def card_reader_thread():
             if event.type == ecodes.EV_KEY and event.value == 1:
                 if event.code in CARD_KEY_CODES:
                     if not key_events:
-                        notify_reading()
+                        notify_reading("Läser kort…")
                     key_events.append(event)
                 elif event.code in (ecodes.KEY_ENTER, ecodes.KEY_KPENTER):
                     if key_events:

@@ -163,7 +163,7 @@ function showStatus(data, options) {
   hideTimer = setTimeout(rest, displayMs);
 }
 
-function showReading() {
+function showReading(message) {
   // Sen reading-händelse efter lyckad status får inte måla blått igen.
   if (uiPhase === "status") return;
   clearTimeout(hideTimer);
@@ -172,8 +172,8 @@ function showReading() {
   uiPhase = "reading";
   wrapper.classList.remove("resting");
   document.body.className = "status-blue";
-  mainMessage.textContent = "Läser kort…";
-  secondaryMessage.textContent = "";
+  mainMessage.textContent = message || "Kortet läst, kontrollerar status";
+  secondaryMessage.textContent = "Vänta…";
   cardNumber.textContent = "";
   expiry.textContent = "";
   const timeoutMs = Math.max(3, cfg.reading_timeout_seconds || 12) * 1000;
@@ -198,7 +198,7 @@ function connectWs() {
     if (ev.data === "pong") return;
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === "reading") showReading();
+    if (msg.type === "reading") showReading(msg.message);
     else if (msg.type === "status") showStatus(msg.data);
     else if (msg.type === "clear") rest();
   };

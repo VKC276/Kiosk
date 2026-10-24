@@ -93,7 +93,11 @@ export default {
         if (denied) return denied;
         const body = await readJsonBody(request);
         const id = kioskIdFrom(url, env, body as { kiosk_id?: string });
-        await (await hub(env, id)).broadcast({ type: "reading" });
+        const message =
+          typeof body.message === "string" && body.message.trim()
+            ? body.message.trim()
+            : undefined;
+        await (await hub(env, id)).broadcast({ type: "reading", message });
         return json(request, { ok: true });
       }
 
@@ -109,7 +113,11 @@ export default {
           return json(request, { ok: true });
         }
         if (eventType === "reading") {
-          await (await hub(env, id)).broadcast({ type: "reading" });
+          const message =
+            typeof body.message === "string" && body.message.trim()
+              ? body.message.trim()
+              : undefined;
+          await (await hub(env, id)).broadcast({ type: "reading", message });
           return json(request, { ok: true });
         }
         const rawStatus = (body.status || body.data) as Partial<CheckinStatus> | undefined;

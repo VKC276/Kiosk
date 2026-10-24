@@ -3,6 +3,7 @@
 Lokal kiosk + MIFARE-incheckning för Västerviks klättercenter (Raspberry Pi).
 
 - **Övre ytan:** timer-styrd karusell (iframes / WallFlow / RSS)
+- **Mitten:** gruppbokningsbar (7 dagar), direkt under WallFlow
 - **Nedre ytan:** kortincheckning (medlem + 10-kort)
 - **Cloudflare:** Pi skickar bara det blippade kortnumret till Workern. Ingen lokal kortlista — kiosken behöver internet ändå (Pages/WallFlow).
 

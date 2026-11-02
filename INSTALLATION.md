@@ -195,7 +195,7 @@ Slides publiceras till Workern (D1) när `CLOUDFLARE.adminToken` finns. Exempel:
 
 ```json
 "KIOSK": {
-  "checkin": { "enabled": true, "path": "/checkin.html", "heightPercent": 20 },
+  "checkin": { "enabled": false, "path": "/checkin.html", "heightPercent": 20 },
   "reloadOnShow": false,
   "reloadIntervalSeconds": 300,
   "slides": [
@@ -209,6 +209,9 @@ Slides publiceras till Workern (D1) när `CLOUDFLARE.adminToken` finns. Exempel:
   ]
 }
 ```
+
+`checkin.enabled` påverkar inte längre receptions-UI:t (nedre kortytan är borttagen).
+10-kortsklipp och kortstatus visas på LocalRetail med kanal-id `retail`.
 
 | Fält | Betydelse |
 |------|-----------|
@@ -232,11 +235,10 @@ curl -s --max-time 3 "$(./venv/bin/python scripts/kiosk-urls.py health)"
 
 Efter `setup-reader` / första install: `sudo reboot`.
 
-Förväntat:
+Förväntat (receptionsskärm):
 
-- `vkc-kiosk.service` kör `agent.py`
-- Chromium fullskärm mot Worker-URL
-- Kortblipp → status i nedre ytan
+- Chromium fullskärm mot Worker-URL (karusell + banner)
+- Kortläsar-agenten körs på LocalRetail-kassan, inte här
 
 ```bash
 vkc-kiosk logs
@@ -387,7 +389,7 @@ UI har timeout (~12 s) och ignorerar sen `reading` efter status. Agenten pushar 
 
 **”Prova igen” efter timeout — dubbelklipp?**
 
-Nej. Workern debounce:ar samma 10-kort i ~30 s (`last_clipped_at`). Om första anropet hann klippa men svaret tappades, visar en ny blipp samma saldo utan ny decrement.
+Nej. Workern debounce:ar samma 10-kort i ~5 s (`last_clipped_at`). Om första anropet hann klippa men svaret tappades, visar en ny blipp samma saldo utan ny decrement.
 
 **Tom/vit skärm**
 

@@ -58,8 +58,8 @@ export function tencardStatus(card: TencardRow): CheckinStatus {
     return {
       type: "TENCARD",
       status: "TENCARD_READY",
-      message: `10-kort OK: ${remaining} klipp kvar.`,
-      secondary_message: memberName ? `Välkommen ${memberName}!` : "",
+      message: `Du har ${remaining} klipp kvar.`,
+      secondary_message: memberName ? `Välkommen ${memberName}!` : "Tryck på knappen för att klippa.",
       status_color: "purple",
       color_code: "#9C27B0",
       card_number_dec: card.card_id,
@@ -161,24 +161,61 @@ export function clipSuccessStatus(
   };
 }
 
+function invalidFormatStatus(): CheckinStatus {
+  return {
+    type: "UNKNOWN",
+    status: "INVALID_FORMAT",
+    message: "Fel: Ogiltigt kort-ID.",
+    secondary_message: "",
+    status_color: "orange",
+    color_code: "#FF9800",
+    card_number_dec: "",
+    member_name: "N/A",
+  };
+}
+
+/** Blipp / saldo — klipper inte 10-kort. Medlemskort returnerar samma status som checkin. */
+export async function lookupCard(
+  store: CardStore,
+  rawCardId: unknown,
+  kioskId: string,
+): Promise<CheckinStatus> {
+  const cardId = normalizeCardNumber(rawCardId);
+  if (!cardId) return invalidFormatStatus();
+
+  const card = await store.getCard(cardId);
+  if (!card) {
+    console.log(JSON.stringify({ event: "lookup", kioskId, cardId, status: "NOT_FOUND" }));
+    return notFoundStatus(cardId);
+  }
+
+  if (card.kind === "tencard") {
+    const status = tencardStatus({
+      card_id: card.card_id,
+      name: card.name,
+      remaining: Number(card.remaining) || 0,
+    });
+    console.log(JSON.stringify({ event: "lookup", kioskId, cardId, status: status.status }));
+    return status;
+  }
+
+  const status = memberStatus({
+    card_id: card.card_id,
+    name: card.name,
+    status: card.status,
+    expires_at: card.expires_at,
+  });
+  console.log(JSON.stringify({ event: "lookup", kioskId, cardId, status: status.status }));
+  return status;
+}
+
 export async function performCheckin(
   store: CardStore,
   rawCardId: unknown,
   kioskId: string,
 ): Promise<CheckinStatus> {
   const cardId = normalizeCardNumber(rawCardId);
-  if (!cardId) {
-    return {
-      type: "UNKNOWN",
-      status: "INVALID_FORMAT",
-      message: "Fel: Ogiltigt kort-ID.",
-      secondary_message: "",
-      status_color: "orange",
-      color_code: "#FF9800",
-      card_number_dec: "",
-      member_name: "N/A",
-    };
-  }
+  if (!cardId) return invalidFormatStatus();
 
   const card = await store.getCard(cardId);
   if (!card) {

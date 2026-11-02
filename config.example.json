@@ -33,7 +33,7 @@
   },
   "KIOSK": {
     "checkin": {
-      "enabled": true,
+      "enabled": false,
       "path": "/checkin.html",
       "heightPercent": 20
     },

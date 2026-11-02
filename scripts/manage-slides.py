@@ -62,7 +62,7 @@ def push_slides_to_cloudflare(cfg: dict) -> None:
     payload = {
         "kiosk_id": kiosk_id,
         "slides": kiosk.get("slides") or [],
-        "checkin_enabled": bool(checkin.get("enabled", True)),
+        "checkin_enabled": bool(checkin.get("enabled", False)),
         "checkin_height_percent": int(checkin.get("heightPercent", 20)),
         "reload_on_show": bool(kiosk.get("reloadOnShow", False)),
         "reload_interval_seconds": int(kiosk.get("reloadIntervalSeconds", 300)),

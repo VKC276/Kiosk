@@ -3,9 +3,9 @@
 Lokal kiosk + MIFARE-incheckning för Västerviks klättercenter (Raspberry Pi).
 
 - **Övre ytan:** timer-styrd karusell (iframes / WallFlow / RSS)
-- **Mitten:** gruppbokningsbar (7 dagar), direkt under WallFlow
-- **Nedre ytan:** kortincheckning (medlem + 10-kort)
-- **Cloudflare:** Pi skickar bara det blippade kortnumret till Workern. Ingen lokal kortlista — kiosken behöver internet ändå (Pages/WallFlow).
+- **Nedre ytan:** gruppbokningsbar (7 dagar)
+- **Kortklipp / incheckning:** sker på LocalRetail-kassan (kanal `retail`), inte på receptionsskärmen
+- **Cloudflare:** kortläsar-agenten (på kassadatorn) skickar blipp till Workern. Ingen lokal kortlista.
 
 Full guide: **[INSTALLATION.md](INSTALLATION.md)** · Worker: **[cloudflare/README.md](cloudflare/README.md)**
 
@@ -65,11 +65,12 @@ WiFi: skrivbordets nätverks-GUI + login-nyckelring (Seahorse) — **inte** `vkc
 ## Arkitektur
 
 ```
-USB-läsare → agent.py (Pi) --POST /api/checkin--> Worker + D1
-Chromium (Pi) --------------WebSocket-----------> samma Worker (kiosk-UI)
+USB-läsare → agent.py (LocalRetail) --POST /api/checkin--> Worker + D1
+LocalRetail webb ----------------------WebSocket---------> samma Worker (kanal retail)
+Chromium (reception) ------------------------------------> Worker (karusell, utan kortyta)
 ```
 
-Pi driver ingen lokal webbserver. `vkc-kiosk.service` startar `agent.py`. Chromium öppnar Worker-URL:en.
+Reception kör bara Chromium mot Worker-URL:en. Kortagenten (`vkc-kiosk.service`) körs på kassadatorn.
 
 Importera kortlistor (xlsx rekommenderas):
 
@@ -85,8 +86,8 @@ cd cloudflare && node scripts/import-from-xlsx.mjs ../CurrentDataSet/10-kort.xls
 
 | URL | Syfte |
 |-----|--------|
-| `/` | Hel kiosk (slides + incheckning) |
-| `/checkin.html` | Bara incheckning |
+| `/` | Receptionskarussell (slides + banner) |
+| `/checkin.html` | Fristående status-UI (används inte i receptionslayouten) |
 | `/api/kiosk/ws` | Live-status till skärmen |
 | `/healthz` | Hälsokoll |
 | `/api/checkin` | Blipp (kiosk-token) |

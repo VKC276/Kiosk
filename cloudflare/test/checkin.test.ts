@@ -3,6 +3,7 @@ import {
   checkinErrorStatus,
   clipSuccessStatus,
   displayName,
+  lookupCard,
   mapMemberStatus,
   memberStatus,
   normalizeCardNumber,
@@ -184,7 +185,7 @@ describe("tencardStatus", () => {
       name: "Klippkorts-användare",
       remaining: 4,
     });
-    expect(status.secondary_message).toBe("");
+    expect(status.secondary_message).toBe("Tryck på knappen för att klippa.");
   });
 });
 
@@ -197,27 +198,39 @@ describe("checkinErrorStatus", () => {
   });
 });
 
-describe("clip debounce", () => {
-  it("treats a second swipe within the window as replay, not a new clip", async () => {
+describe("lookup vs clip", () => {
+  it("lookup shows remaining without decrementing", async () => {
     const store = memoryStore({
       tencards: [{ card_id: "111", name: "Anna", remaining: 5 }],
     });
-    const first = await performCheckin(store, "111", "reception");
+    const looked = await lookupCard(store, "111", "retail");
+    expect(looked.status).toBe("TENCARD_READY");
+    expect(looked.message).toContain("5 klipp kvar");
+    const card = await store.getCard("111");
+    expect(card?.remaining).toBe(5);
+  });
+
+  it("confirm clip decrements; second confirm also decrements (no debounce)", async () => {
+    const store = memoryStore({
+      tencards: [{ card_id: "111", name: "Anna", remaining: 5 }],
+    });
+    const first = await performCheckin(store, "111", "retail");
     expect(first.status).toBe("TENCARD_CLIPPED_OK");
     expect(first.message).toContain("4 klipp kvar");
 
-    const second = await performCheckin(store, "111", "reception");
+    const second = await performCheckin(store, "111", "retail");
     expect(second.status).toBe("TENCARD_CLIPPED_OK");
-    expect(second.message).toContain("4 klipp kvar");
+    expect(second.message).toContain("3 klipp kvar");
 
     const card = await store.getCard("111");
-    expect(card?.remaining).toBe(4);
+    expect(card?.remaining).toBe(3);
   });
 
-  it("isRecentlyClipped respects the debounce window", () => {
+  it("isRecentlyClipped is off when debounce is 0", () => {
     const now = Date.parse("2026-09-26T12:00:00Z");
-    expect(isRecentlyClipped("2026-09-26 11:59:40", 30, now)).toBe(true);
-    expect(isRecentlyClipped("2026-09-26 11:59:00", 30, now)).toBe(false);
-    expect(isRecentlyClipped(null, 30, now)).toBe(false);
+    expect(CLIP_DEBOUNCE_SECONDS).toBe(0);
+    expect(isRecentlyClipped("2026-09-26 11:59:59", CLIP_DEBOUNCE_SECONDS, now)).toBe(false);
+    expect(isRecentlyClipped("2026-09-26 11:59:57", 5, now)).toBe(true);
+    expect(isRecentlyClipped(null, 5, now)).toBe(false);
   });
 });

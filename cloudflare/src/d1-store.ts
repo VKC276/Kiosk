@@ -18,27 +18,43 @@ export function d1CardStore(db: D1Database): CardStore {
       cardId: string,
       debounceSeconds: number = CLIP_DEBOUNCE_SECONDS,
     ): Promise<ClipResult> {
-      const debounce = Math.max(1, Math.trunc(debounceSeconds));
-      // Atomiskt: klipp bara om remaining > 0 och inte nyligen klippt.
-      const row = await db
-        .prepare(
-          `UPDATE cards
-           SET remaining = remaining - 1,
-               last_clipped_at = datetime('now'),
-               status = CASE WHEN remaining - 1 <= 0 THEN 'Inga besök kvar' ELSE 'Aktivt' END,
-               updated_at = datetime('now')
-           WHERE card_id = ?
-             AND kind = 'tencard'
-             AND remaining > 0
-             AND (
-               last_clipped_at IS NULL
-               OR last_clipped_at = ''
-               OR last_clipped_at < datetime('now', ?)
-             )
-           RETURNING remaining, name, status`,
-        )
-        .bind(cardId, `-${debounce} seconds`)
-        .first<{ remaining: number; name: string }>();
+      const debounce = Math.max(0, Math.trunc(debounceSeconds));
+      // Atomiskt: klipp om remaining > 0. Debounce (samma kort nyligen) bara om > 0.
+      const row =
+        debounce > 0
+          ? await db
+              .prepare(
+                `UPDATE cards
+                 SET remaining = remaining - 1,
+                     last_clipped_at = datetime('now'),
+                     status = CASE WHEN remaining - 1 <= 0 THEN 'Inga besök kvar' ELSE 'Aktivt' END,
+                     updated_at = datetime('now')
+                 WHERE card_id = ?
+                   AND kind = 'tencard'
+                   AND remaining > 0
+                   AND (
+                     last_clipped_at IS NULL
+                     OR last_clipped_at = ''
+                     OR last_clipped_at < datetime('now', ?)
+                   )
+                 RETURNING remaining, name, status`,
+              )
+              .bind(cardId, `-${debounce} seconds`)
+              .first<{ remaining: number; name: string }>()
+          : await db
+              .prepare(
+                `UPDATE cards
+                 SET remaining = remaining - 1,
+                     last_clipped_at = datetime('now'),
+                     status = CASE WHEN remaining - 1 <= 0 THEN 'Inga besök kvar' ELSE 'Aktivt' END,
+                     updated_at = datetime('now')
+                 WHERE card_id = ?
+                   AND kind = 'tencard'
+                   AND remaining > 0
+                 RETURNING remaining, name, status`,
+              )
+              .bind(cardId)
+              .first<{ remaining: number; name: string }>();
 
       if (row) {
         return { remaining: Number(row.remaining), name: row.name || "" };

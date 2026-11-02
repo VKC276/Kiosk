@@ -1,9 +1,9 @@
 # Cloudflare Worker — VKC 10-kort / incheckning
 
-Kioskskärmen kan ligga kvar på **GitHub Pages**. Raspberry Pi kör bara `agent.py`:
-läs **ett** kortnummer → `POST /api/clip` med `KIOSK_TOKEN` → API svarar med klipp kvar / slut.
-Ingen lokal kopia av 10-kortslistan — internet behövs ändå för skärmen.
-Workern pushar samma status till incheckningsytan (iframe mot Workern).
+Receptionsskärmen visar karusell (+ banner). Kortläsar-agenten körs på
+**LocalRetail-kassan** (`CLOUDFLARE.kioskId=retail`): läs **ett** kortnummer →
+`POST /api/clip` med `KIOSK_TOKEN` → Workern pushar status till LocalRetail via WebSocket.
+Ingen lokal kopia av 10-kortslistan.
 
 `KIOSK_TOKEN` kan **bara klippa befintliga kort**. Den kan inte skapa kort eller sätta saldo.
 Nya kort och manuell justering kräver `ADMIN_TOKEN` (WallFlow för superadmin/hallvärd).
@@ -103,7 +103,7 @@ curl -sS -X POST http://127.0.0.1:8787/api/checkin \
 | GET | `/api/kiosk/ws?kiosk=` | nej | WebSocket till skärmen |
 | POST | `/api/checkin/reading` | KIOSK | blå "Läser kort…" (ingen D1) |
 | POST | `/api/checkin/ui` | KIOSK | pusha `status`/`clear` till skärmen (ingen D1; används vid nätfel) |
-| POST | `/api/clip` eller `/api/checkin` | KIOSK | klipp; svar `{ remaining, exhausted, status }`. Samma 10-kort inom ~30 s = replay (inga dubbelklipp) |
+| POST | `/api/clip` eller `/api/checkin` | KIOSK | klipp; svar `{ remaining, exhausted, status }`. Samma 10-kort inom ~5 s = replay (inga dubbelklipp) |
 | GET | `/api/admin/tencards` | ADMIN | lista 10-kort (WallFlow) |
 | POST | `/api/admin/tencards` | ADMIN | skapa/uppdatera saldo (WallFlow) |
 | POST | `/api/admin/import/members` | ADMIN | JSON-lista med medlemskort |

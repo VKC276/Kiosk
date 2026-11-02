@@ -185,7 +185,7 @@ export async function loadKioskConfig(db: D1Database, kioskId: string): Promise<
     return {
       kiosk_id: kioskId,
       slides: [],
-      checkin_enabled: true,
+      checkin_enabled: false,
       checkin_height_percent: 20,
       reload_on_show: false,
       reload_interval_seconds: 300,

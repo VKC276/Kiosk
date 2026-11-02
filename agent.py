@@ -247,23 +247,22 @@ def process_raw_card_id(raw_id: str) -> None:
     # ser ingen mellanfeedback under nätverksväntan.
     notify_reading("Kortet läst, kontrollerar status", wait=True)
 
+    # Lookup visar saldo; själva klippet sker via knappen "Klipp en markering" i UI.
     result = post_json(
-        "/api/checkin",
+        "/api/lookup",
         {"card_id": processed_id, "kiosk_id": CF_KIOSK_ID},
     )
     if result and result.get("status"):
         status = result["status"]
         print(
-            f"CF OK: {status.get('status')} — {status.get('message')} "
+            f"CF LOOKUP: {status.get('status')} — {status.get('message')} "
             f"({status.get('card_number_dec')})"
         )
         return
 
-    # Checkin misslyckades efter att reading redan målat blått — lämna inte UI där.
-    # Retry är säkert: Worker debounce:ar samma 10-kort inom ~30 s (inga dubbelklipp).
-    print(f"CF: Checkin misslyckades för {processed_id!r} — skickar felstatus till UI.")
+    print(f"CF: Lookup misslyckades för {processed_id!r} — skickar felstatus till UI.")
     notify_ui_status(
-        "Det gick inte att klippa ditt kort.",
+        "Det gick inte att läsa ditt kort.",
         secondary="Prova igen.",
         card_id=processed_id,
     )

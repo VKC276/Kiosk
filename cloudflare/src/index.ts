@@ -1,6 +1,6 @@
 import { requireToken } from "./auth";
 import { jsonWithCors, preflight } from "./cors";
-import { checkinErrorStatus, performCheckin } from "./checkin";
+import { checkinErrorStatus, lookupCard, normalizeCardNumber, performCheckin } from "./checkin";
 import { d1CardStore } from "./d1-store";
 import {
   deleteTencard,
@@ -144,6 +144,25 @@ export default {
         return json(request, { ok: true, status });
       }
 
+      // Blipp → saldo/status utan klipp. UI bekräftar 10-kortsklipp via WebSocket confirm_clip.
+      if (url.pathname === "/api/lookup" && request.method === "POST") {
+        const denied = requireToken(request, env.KIOSK_TOKEN, "KIOSK_TOKEN");
+        if (denied) return denied;
+        const body = await readJsonBody(request);
+        const id = kioskIdFrom(url, env, body as { kiosk_id?: string });
+        const cardId = body.card_id ?? body.cardId;
+        const status = await lookupCard(d1CardStore(env.DB), cardId, id);
+        const stub = await hub(env, id);
+        const normalized = normalizeCardNumber(cardId);
+        if (status.status === "TENCARD_READY" && normalized) {
+          await stub.setPending(normalized);
+        } else {
+          await stub.setPending(null);
+        }
+        await stub.broadcast({ type: "status", data: status });
+        return json(request, clipPayload(status));
+      }
+
       if (
         (url.pathname === "/api/checkin" || url.pathname === "/api/clip") &&
         request.method === "POST"
@@ -154,7 +173,9 @@ export default {
         const id = kioskIdFrom(url, env, body as { kiosk_id?: string });
         const cardId = body.card_id ?? body.cardId;
         const status = await performCheckin(d1CardStore(env.DB), cardId, id);
-        await (await hub(env, id)).broadcast({ type: "status", data: status });
+        const stub = await hub(env, id);
+        await stub.setPending(null);
+        await stub.broadcast({ type: "status", data: status });
         return json(request, clipPayload(status));
       }
 
